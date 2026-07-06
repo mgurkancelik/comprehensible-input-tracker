@@ -663,6 +663,94 @@ button:disabled {
   color: var(--color-text);
 }
 
+.series-progress {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-alt);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: var(--radius-pill);
+  transition: width 0.2s ease;
+}
+
+.series-progress-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.season-chip-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.season-mini-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.season-mini-chip--muted {
+  font-style: italic;
+}
+
+.manage-episodes-btn {
+  align-self: flex-start;
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.manage-episodes-btn:hover {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border-color: var(--color-primary);
+}
+
+.season-quick-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.season-quick-action-btn {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  font-size: 13px;
+  padding: var(--space-2) var(--space-4);
+  flex-shrink: 0;
+}
+
+.season-quick-action-btn:hover {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border-color: var(--color-primary);
+}
+
 .card-actions {
   display: flex;
   gap: var(--space-3);
@@ -1335,20 +1423,45 @@ button:disabled {
   overflow: hidden;
 }
 
-.modal-actions {
+.modal-status-actions {
   margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
-.modal-add-btn {
-  width: 100%;
+.modal-status-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--color-text-muted);
 }
 
-.modal-add-btn--added {
-  background: var(--color-success);
+.modal-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
-.modal-add-btn--added:hover {
-  background: var(--color-success);
+.modal-status-btn {
+  flex: 1;
+  min-width: 100px;
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  font-size: 14px;
+}
+
+.modal-status-btn:hover {
+  border-color: var(--color-primary);
+}
+
+.modal-status-btn--active {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border-color: var(--color-primary);
 }
 
 @media (max-width: 1000px) {
@@ -1405,6 +1518,15 @@ button:disabled {
   .card-top,
   .card-actions,
   .circle-progress-row {
+    flex-direction: column;
+  }
+
+  .season-quick-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .modal-status-row {
     flex-direction: column;
   }
 

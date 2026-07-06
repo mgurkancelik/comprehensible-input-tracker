@@ -77,6 +77,7 @@ function DiscoverPage({
   onSyncSeriesTotalEpisodes,
   onSyncSeasonEpisodes,
   onToggleEpisodeWatched,
+  onToggleSeasonWatched,
 }) {
   const [activeCategory, setActiveCategory] = useState(CATEGORIES[0].key);
   const [items, setItems] = useState([]);
@@ -406,12 +407,13 @@ function DiscoverPage({
         <ContentDetailModal
           item={selectedItem}
           isAdded={isItemAdded(selectedItem)}
-          onAdd={() => onAddToWatchlist(selectedItem)}
+          onAdd={(status) => onAddToWatchlist(selectedItem, status)}
           onClose={() => setSelectedItem(null)}
           contents={contents}
           onSyncSeriesTotalEpisodes={onSyncSeriesTotalEpisodes}
           onSyncSeasonEpisodes={onSyncSeasonEpisodes}
           onToggleEpisodeWatched={onToggleEpisodeWatched}
+          onToggleSeasonWatched={onToggleSeasonWatched}
         />
       )}
     </section>

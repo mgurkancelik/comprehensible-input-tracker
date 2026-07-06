@@ -3,6 +3,8 @@ import StatsPanel from "./components/StatsPanel";
 import RecommendationsPage from "./components/RecommendationsPage";
 import ContentForm from "./components/ContentForm";
 import DiscoverPage from "./components/DiscoverPage";
+import ContentDetailModal from "./components/ContentDetailModal";
+import LibraryPage from "./components/LibraryPage";
 import "./App.css";
 
 const THEME_STORAGE_KEY = "ciTrackerTheme";
@@ -338,17 +340,21 @@ function App() {
     tmdbRating = null,
     releaseYear = null,
     seasons = [],
+    status = "İzleyecekler",
   }) => {
     const safeMinutes = toSafeNumber(minutesPerEpisode);
+    const today = getToday();
+    const isCompleted = status === "İzlediklerim";
+    const isWatching = status === "İzleniyor";
 
     return {
       id: Date.now(),
       title,
       type,
-      status: "İzleyecekler",
-      startDate: "",
+      status,
+      startDate: isWatching || isCompleted ? today : "",
       targetEndDate: "",
-      completedDate: "",
+      completedDate: isCompleted ? today : "",
       totalEpisodes: 0,
       watchedEpisodes: 0,
       minutesPerEpisode: safeMinutes,
@@ -379,8 +385,9 @@ function App() {
     setContents([...contents, newContent]);
   };
 
-  const isDiscoveryItemAdded = (item) => {
-    return contents.some((content) => {
+  // Keşfet öğesine karşılık gelen kayıtlı content'i (varsa) bulur.
+  const findDiscoveryContent = (item) => {
+    return contents.find((content) => {
       if (content.source !== "tmdb") {
         return false;
       }
@@ -395,8 +402,41 @@ function App() {
     });
   };
 
-  const addDiscoveryItemToWatchlist = (item) => {
-    if (isDiscoveryItemAdded(item)) {
+  const isDiscoveryItemAdded = (item) => Boolean(findDiscoveryContent(item));
+
+  // Bir içeriğin durumunu (İzleyecekler / İzleniyor / İzlediklerim) doğrudan
+  // günceller. Bölüm/sezon verisine hiç dokunmaz — sadece status ve
+  // buna bağlı start/completed tarihlerini ayarlar.
+  const setContentStatus = (contentId, status) => {
+    const today = getToday();
+    const isCompleted = status === "İzlediklerim";
+    const isWatching = status === "İzleniyor";
+
+    setContents((prevContents) =>
+      prevContents.map((content) => {
+        if (content.id !== contentId) {
+          return content;
+        }
+
+        return {
+          ...content,
+          status,
+          startDate:
+            content.startDate ||
+            (isWatching || isCompleted ? today : content.startDate),
+          completedDate: isCompleted
+            ? content.completedDate || today
+            : content.completedDate,
+        };
+      })
+    );
+  };
+
+  const addDiscoveryItemToWatchlist = (item, status = "İzleyecekler") => {
+    const existingContent = findDiscoveryContent(item);
+
+    if (existingContent) {
+      setContentStatus(existingContent.id, status);
       return;
     }
 
@@ -413,6 +453,7 @@ function App() {
       estimatedLevel: item.estimatedLevel,
       tmdbRating: item.rating,
       releaseYear: item.year,
+      status,
     });
 
     setContents([...contents, newContent]);
@@ -580,6 +621,136 @@ function App() {
         };
       })
     );
+  };
+
+  // Bir sezondaki tüm bölümleri tek seferde işaretler/kaldırır.
+  // toggleEpisodeWatched ile aynı güvenli desen, sadece tüm bölümlere uygulanır.
+  const toggleSeasonWatched = (sourceId, seasonNumber, markWatched) => {
+    const today = getToday();
+
+    setContents((prevContents) =>
+      prevContents.map((content) => {
+        if (content.sourceId !== sourceId || content.mediaType !== "tv") {
+          return content;
+        }
+
+        const seasonsList = content.seasons || [];
+
+        const updatedSeasons = seasonsList.map((season) => {
+          if (season.seasonNumber !== seasonNumber) {
+            return season;
+          }
+
+          return {
+            ...season,
+            episodes: season.episodes.map((episode) => ({
+              ...episode,
+              watched: markWatched,
+              watchedAt: markWatched ? today : null,
+            })),
+          };
+        });
+
+        const watchedEpisodes = updatedSeasons.reduce(
+          (sum, season) =>
+            sum + season.episodes.filter((episode) => episode.watched).length,
+          0
+        );
+
+        const isFinished =
+          content.totalEpisodes > 0 &&
+          watchedEpisodes >= content.totalEpisodes;
+
+        return {
+          ...content,
+          seasons: updatedSeasons,
+          watchedEpisodes,
+          completedDate:
+            isFinished && !content.completedDate
+              ? today
+              : content.completedDate,
+        };
+      })
+    );
+  };
+
+  // Kayıtlı bir content nesnesini ContentDetailModal'ın beklediği (Keşfet
+  // sayfasından gelen) alan adlarına çevirir; Dashboard kartından "Bölümleri
+  // Yönet" ile aynı modalı açabilmek için kullanılır.
+  const buildDiscoverItemFromContent = (content) => ({
+    id: content.sourceId,
+    title: content.title,
+    year: content.releaseYear,
+    rating: content.tmdbRating,
+    type: content.type,
+    mediaType: content.mediaType,
+    genre: content.genre,
+    estimatedLevel: content.estimatedLevel,
+    overview: content.overview,
+    posterUrl: content.posterUrl,
+    minutesPerEpisode: content.minutesPerEpisode,
+  });
+
+  const [managingContentId, setManagingContentId] = useState(null);
+
+  const managedContent =
+    managingContentId !== null
+      ? contents.find((content) => content.id === managingContentId)
+      : null;
+
+  const MAX_VISIBLE_SEASON_CHIPS = 4;
+
+  const getSeriesProgressSummary = (item) => {
+    const seasonsList = item.seasons || [];
+
+    const orderedSeasons = [
+      ...seasonsList.filter((season) => season.seasonNumber !== 0),
+      ...seasonsList.filter((season) => season.seasonNumber === 0),
+    ];
+
+    const completionPercent =
+      item.totalEpisodes > 0
+        ? Math.min(
+            100,
+            Math.round((item.watchedEpisodes / item.totalEpisodes) * 100)
+          )
+        : 0;
+
+    const isFullyWatched =
+      item.totalEpisodes > 0 && item.watchedEpisodes >= item.totalEpisodes;
+
+    let nextEpisodeLabel =
+      "Sıradaki bölümü görmek için sezonları görüntüle.";
+
+    if (isFullyWatched) {
+      nextEpisodeLabel = "Tüm bölümler tamamlandı";
+    } else {
+      for (const season of orderedSeasons) {
+        const nextEpisode = [...season.episodes]
+          .sort((a, b) => a.episodeNumber - b.episodeNumber)
+          .find((episode) => !episode.watched);
+
+        if (nextEpisode) {
+          nextEpisodeLabel = `Sıradaki: S${season.seasonNumber}E${
+            nextEpisode.episodeNumber
+          } - ${nextEpisode.name || "Başlıksız Bölüm"}`;
+          break;
+        }
+      }
+    }
+
+    const visibleSeasons = orderedSeasons.slice(0, MAX_VISIBLE_SEASON_CHIPS);
+    const hiddenSeasonCount = Math.max(
+      orderedSeasons.length - MAX_VISIBLE_SEASON_CHIPS,
+      0
+    );
+
+    return {
+      completionPercent,
+      nextEpisodeLabel,
+      visibleSeasons,
+      hiddenSeasonCount,
+    };
   };
 
   const totalWatchedMinutes = contents.reduce(
@@ -997,6 +1168,78 @@ function App() {
           </p>
         </div>
 
+        {item.mediaType === "tv" && (
+          <div className="series-progress">
+            {item.seasons && item.seasons.length > 0 ? (
+              (() => {
+                const {
+                  completionPercent,
+                  nextEpisodeLabel,
+                  visibleSeasons,
+                  hiddenSeasonCount,
+                } = getSeriesProgressSummary(item);
+
+                return (
+                  <>
+                    <div className="progress-bar">
+                      <div
+                        className="progress-bar-fill"
+                        style={{ width: `${completionPercent}%` }}
+                      />
+                    </div>
+
+                    <p className="series-progress-text">
+                      Tamamlanma: %{completionPercent} · {nextEpisodeLabel}
+                    </p>
+
+                    <div className="season-chip-summary">
+                      {visibleSeasons.map((season) => {
+                        const watchedCount = season.episodes.filter(
+                          (episode) => episode.watched
+                        ).length;
+                        const totalCount = season.episodes.length;
+                        const isFull =
+                          totalCount > 0 && watchedCount >= totalCount;
+
+                        return (
+                          <span
+                            className="season-mini-chip"
+                            key={season.seasonNumber}
+                          >
+                            {season.seasonNumber === 0
+                              ? "Özel"
+                              : `S${season.seasonNumber}`}{" "}
+                            {isFull ? "✓" : `${watchedCount}/${totalCount}`}
+                          </span>
+                        );
+                      })}
+
+                      {hiddenSeasonCount > 0 && (
+                        <span className="season-mini-chip season-mini-chip--muted">
+                          +{hiddenSeasonCount} sezon
+                        </span>
+                      )}
+                    </div>
+                  </>
+                );
+              })()
+            ) : (
+              <p className="series-progress-text">
+                Sezon ve bölüm bilgilerini görmek için "Bölümleri Yönet"e
+                bas.
+              </p>
+            )}
+
+            <button
+              type="button"
+              className="manage-episodes-btn"
+              onClick={() => setManagingContentId(item.id)}
+            >
+              🎬 Bölümleri Yönet
+            </button>
+          </div>
+        )}
+
         <div className="card-actions">
           <button
             className="watch-btn"
@@ -1070,11 +1313,8 @@ function App() {
                 ➕ Yeni içerik ekle
               </a>
 
-              <button
-                type="button"
-                onClick={() => setActivePage("recommendations")}
-              >
-                🎯 Önerilere git
+              <button type="button" onClick={() => setActivePage("discover")}>
+                🔎 Keşfet'e git
               </button>
 
               <button type="button" onClick={() => setActivePage("tracking")}>
@@ -1099,68 +1339,6 @@ function App() {
           />
         </div>
 
-        <section className="content-list">
-          <h2>İçeriklerim</h2>
-
-          <div className="filters">
-            <label className="visually-hidden" htmlFor="content-search">
-              İçerik ara
-            </label>
-            <input
-              id="content-search"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              placeholder="İçerik ara..."
-            />
-
-            <label className="visually-hidden" htmlFor="content-type-filter">
-              Türe göre filtrele
-            </label>
-            <select
-              id="content-type-filter"
-              value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value)}
-            >
-              <option>Tümü</option>
-              <option>Dizi</option>
-              <option>Film</option>
-              <option>Animasyon</option>
-              <option>Anime</option>
-              <option>YouTube</option>
-              <option>Podcast</option>
-            </select>
-          </div>
-
-          <h2>📌 İzleyecekler Listem</h2>
-          {watchLaterList.length === 0 ? (
-            <p className="empty-text">
-              Henüz izleyecek bir içerik eklemedin. Yukarıdaki formdan ilk
-              içeriğini ekleyerek input takibine başla! 🚀
-            </p>
-          ) : (
-            watchLaterList.map(renderContentCard)
-          )}
-
-          <h2>▶️ Şu An İzlediklerim</h2>
-          {watchingList.length === 0 ? (
-            <p className="empty-text">
-              Şu an aktif izlediğin bir içerik yok. İzleyecekler listenden
-              birini başlatarak ilerlemeye devam et.
-            </p>
-          ) : (
-            watchingList.map(renderContentCard)
-          )}
-
-          <h2>✅ İzlediklerim</h2>
-          {completedList.length === 0 ? (
-            <p className="empty-text">
-              Henüz tamamlanan içerik yok. İlk içeriğini bitirdiğinde burada
-              görünecek.
-            </p>
-          ) : (
-            completedList.map(renderContentCard)
-          )}
-        </section>
       </>
     );
   };
@@ -1200,43 +1378,19 @@ function App() {
         </button>
 
         <button
+          className={activePage === "library" ? "nav-active" : ""}
+          aria-current={activePage === "library" ? "page" : undefined}
+          onClick={() => setActivePage("library")}
+        >
+          📚 Kütüphanem
+        </button>
+
+        <button
           className={activePage === "tracking" ? "nav-active" : ""}
           aria-current={activePage === "tracking" ? "page" : undefined}
           onClick={() => setActivePage("tracking")}
         >
           Takip Çizelgesi
-        </button>
-
-        <button
-          className={activePage === "recommendations" ? "nav-active" : ""}
-          aria-current={activePage === "recommendations" ? "page" : undefined}
-          onClick={() => setActivePage("recommendations")}
-        >
-          Öneriler
-        </button>
-
-        <button
-          className={activePage === "topMovies" ? "nav-active" : ""}
-          aria-current={activePage === "topMovies" ? "page" : undefined}
-          onClick={() => setActivePage("topMovies")}
-        >
-          Top Rated Filmler
-        </button>
-
-        <button
-          className={activePage === "topSeries" ? "nav-active" : ""}
-          aria-current={activePage === "topSeries" ? "page" : undefined}
-          onClick={() => setActivePage("topSeries")}
-        >
-          Top Rated Diziler
-        </button>
-
-        <button
-          className={activePage === "random" ? "nav-active" : ""}
-          aria-current={activePage === "random" ? "page" : undefined}
-          onClick={() => setActivePage("random")}
-        >
-          Rastgele Öner
         </button>
 
         <button
@@ -1288,6 +1442,20 @@ function App() {
             onSyncSeriesTotalEpisodes={syncSeriesTotalEpisodes}
             onSyncSeasonEpisodes={syncSeasonEpisodes}
             onToggleEpisodeWatched={toggleEpisodeWatched}
+            onToggleSeasonWatched={toggleSeasonWatched}
+          />
+        )}
+
+        {activePage === "library" && (
+          <LibraryPage
+            searchText={searchText}
+            setSearchText={setSearchText}
+            selectedType={selectedType}
+            setSelectedType={setSelectedType}
+            watchLaterList={watchLaterList}
+            watchingList={watchingList}
+            completedList={completedList}
+            renderContentCard={renderContentCard}
           />
         )}
 
@@ -1328,6 +1496,20 @@ function App() {
           </section>
         )}
       </main>
+
+      {managedContent && (
+        <ContentDetailModal
+          item={buildDiscoverItemFromContent(managedContent)}
+          isAdded={true}
+          onAdd={(status) => setContentStatus(managedContent.id, status)}
+          onClose={() => setManagingContentId(null)}
+          contents={contents}
+          onSyncSeriesTotalEpisodes={syncSeriesTotalEpisodes}
+          onSyncSeasonEpisodes={syncSeasonEpisodes}
+          onToggleEpisodeWatched={toggleEpisodeWatched}
+          onToggleSeasonWatched={toggleSeasonWatched}
+        />
+      )}
     </div>
   );
 }

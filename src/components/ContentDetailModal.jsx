@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { getSeriesDetails, getSeasonDetails } from "../services/tmdb";
 
+const STATUS_OPTIONS = [
+  { value: "İzleyecekler", label: "İzleyeceğim" },
+  { value: "İzleniyor", label: "İzliyorum" },
+  { value: "İzlediklerim", label: "İzledim" },
+];
+
 function ContentDetailModal({
   item,
   isAdded,
@@ -10,6 +16,7 @@ function ContentDetailModal({
   onSyncSeriesTotalEpisodes,
   onSyncSeasonEpisodes,
   onToggleEpisodeWatched,
+  onToggleSeasonWatched,
 }) {
   const isSeries = item?.mediaType === "tv";
   const rawSeriesId = item?.id ? item.id.split("-").pop() : null;
@@ -186,9 +193,9 @@ function ContentDetailModal({
 
   const estimatedWords = Math.round((item.minutesPerEpisode || 0) * 120);
 
-  const savedContent = isSeries
-    ? (contents || []).find((content) => content.sourceId === item.id)
-    : null;
+  const savedContent = (contents || []).find(
+    (content) => content.sourceId === item.id
+  );
 
   const savedSeasonForSelected = savedContent?.seasons?.find(
     (season) => season.seasonNumber === selectedSeasonNumber
@@ -343,13 +350,31 @@ function ContentDetailModal({
                   {episodesStatus === "success" && episodes.length > 0 && (
                     <>
                       {isAdded && savedContent && (
-                        <p className="modal-season-status modal-season-progress">
-                          {selectedSeasonNumber === 0
-                            ? "Özel Bölümler"
-                            : `Sezon ${selectedSeasonNumber}`}{" "}
-                          — {watchedInSelectedSeason}/{episodes.length}{" "}
-                          izlendi
-                        </p>
+                        <div className="season-quick-actions">
+                          <p className="modal-season-status modal-season-progress">
+                            {selectedSeasonNumber === 0
+                              ? "Özel Bölümler"
+                              : `Sezon ${selectedSeasonNumber}`}{" "}
+                            — {watchedInSelectedSeason}/{episodes.length}{" "}
+                            izlendi
+                          </p>
+
+                          <button
+                            type="button"
+                            className="season-quick-action-btn"
+                            onClick={() =>
+                              onToggleSeasonWatched(
+                                item.id,
+                                selectedSeasonNumber,
+                                watchedInSelectedSeason < episodes.length
+                              )
+                            }
+                          >
+                            {watchedInSelectedSeason >= episodes.length
+                              ? "İşaretleri Kaldır"
+                              : "Sezonu İzledim"}
+                          </button>
+                        </div>
                       )}
 
                       <ul className="episode-list">
@@ -424,15 +449,29 @@ function ContentDetailModal({
             </div>
           )}
 
-          <div className="modal-actions">
-            <button
-              type="button"
-              className={`modal-add-btn${isAdded ? " modal-add-btn--added" : ""}`}
-              onClick={onAdd}
-              disabled={isAdded}
-            >
-              {isAdded ? "✓ Eklendi" : "İzleyecekler Listeme Ekle"}
-            </button>
+          <div className="modal-status-actions">
+            <p className="modal-status-label">
+              {isAdded ? "Durumu değiştir" : "Durum seç"}
+            </p>
+
+            <div className="modal-status-row">
+              {STATUS_OPTIONS.map((option) => {
+                const isActive = isAdded && savedContent?.status === option.value;
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`modal-status-btn${
+                      isActive ? " modal-status-btn--active" : ""
+                    }`}
+                    onClick={() => onAdd(option.value)}
+                  >
+                    {isActive ? `✓ ${option.label}` : option.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>

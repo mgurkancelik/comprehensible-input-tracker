@@ -58,8 +58,8 @@ function PosterCard({ item, isAdded, onAdd, onOpenDetail, levelFilter }) {
           disabled={isAdded}
           aria-label={
             isAdded
-              ? `${item.title} zaten İzleyecekler listende`
-              : `${item.title} içeriğini İzleyecekler listeme ekle`
+              ? `${item.title} zaten listende`
+              : `${item.title} içeriğini listeme ekle`
           }
         >
           {isAdded ? "✓" : "+"}
