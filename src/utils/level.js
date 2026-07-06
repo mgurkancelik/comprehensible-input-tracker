@@ -28,9 +28,14 @@ const GENRE_NAMES = {
   10768: "Savaş ve Politika",
 };
 
+// Not: "Dram" ve "Gizem" gibi çok yaygın kullanılan etiketler kasıtlı olarak
+// HARD setinde değil — neredeyse her kaliteli dizi/film bu etiketi taşıdığı
+// için tek başına dil zorluğu hakkında güvenilir bir sinyal değil.
 const EASY_GENRE_IDS = new Set([16, 10751, 10762]);
-const HARD_GENRE_IDS = new Set([80, 878, 18, 10768, 10765, 10759, 53, 9648]);
-const MEDIUM_GENRE_IDS = new Set([35, 10749, 10766, 10767]);
+const HARD_GENRE_IDS = new Set([80, 878, 10768, 10765, 53, 10752, 99, 36]);
+const MEDIUM_GENRE_IDS = new Set([
+  35, 10749, 10766, 10767, 18, 9648, 12, 14, 10759,
+]);
 
 const DEFAULT_LEVEL = "B1-B2";
 
@@ -52,6 +57,31 @@ export function estimateLevel(genreIds = []) {
   }
 
   return DEFAULT_LEVEL;
+}
+
+// Seviye filtresi kesin bir sınıflandırma değil, rehber niteliğinde olduğu
+// için seçilen seviyeye ±1 "tier" yakınlığındaki içerikler de gösterilir.
+// Böylece örn. B1-B2 seçildiğinde sayfa neredeyse hiç boşalmaz, A2-B1
+// seçildiğinde sadece en zor (B2) içerikler elenir.
+const LEVEL_TIERS = {
+  "A2-B1": 1,
+  "B1-B2": 2,
+  B2: 3,
+};
+
+export function matchesLevelFilter(estimatedLevel, filterLevel) {
+  if (!filterLevel || filterLevel === "Tümü") {
+    return true;
+  }
+
+  const itemTier = LEVEL_TIERS[estimatedLevel];
+  const filterTier = LEVEL_TIERS[filterLevel];
+
+  if (!itemTier || !filterTier) {
+    return estimatedLevel === filterLevel;
+  }
+
+  return Math.abs(itemTier - filterTier) <= 1;
 }
 
 export function getGenreLabel(genreIds = []) {

@@ -26,11 +26,12 @@ async function tmdbFetch(endpoint, params = {}) {
     throw new Error(`TMDb isteği başarısız oldu: ${response.status}`);
   }
 
-  const data = await response.json();
-
-  return data.results || [];
+  return response.json();
 }
 
+// Bu dört fonksiyon, "Daha Fazla Yükle" özelliği için sayfalama bilgisini
+// (page, total_pages) kullanabilmesi adına TMDb yanıtının tamamını
+// (results + page + total_pages) döndürür.
 export function getPopularMovies(page = 1) {
   return tmdbFetch("/movie/popular", { page });
 }
@@ -45,6 +46,27 @@ export function getPopularSeries(page = 1) {
 
 export function getTopRatedSeries(page = 1) {
   return tmdbFetch("/tv/top_rated", { page });
+}
+
+// Arama fonksiyonları geriye uyumluluk için sadece sonuç dizisini döndürmeye
+// devam eder — bu turda arama tarafına pagination eklenmedi.
+export async function searchMovies(query, page = 1) {
+  const data = await tmdbFetch("/search/movie", { query, page });
+  return data.results || [];
+}
+
+export async function searchSeries(query, page = 1) {
+  const data = await tmdbFetch("/search/tv", { query, page });
+  return data.results || [];
+}
+
+export async function searchMulti(query, page = 1) {
+  const [movies, series] = await Promise.all([
+    searchMovies(query, page),
+    searchSeries(query, page),
+  ]);
+
+  return { movies, series };
 }
 
 export function getImageUrl(path, size = "w342") {

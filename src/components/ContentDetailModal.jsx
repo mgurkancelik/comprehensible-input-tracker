@@ -85,6 +85,11 @@ function ContentDetailModal({ item, isAdded, onAdd, onClose }) {
             </div>
           </div>
 
+          <p className="modal-level-note">
+            Bu seviye tür ve içerik bilgilerine göre tahmini olarak
+            belirlenmiştir.
+          </p>
+
           <p className="modal-overview">{item.overview}</p>
 
           <div className="modal-actions">

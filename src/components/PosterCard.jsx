@@ -1,4 +1,4 @@
-function PosterCard({ item, isAdded, onAdd, onOpenDetail }) {
+function PosterCard({ item, isAdded, onAdd, onOpenDetail, levelFilter }) {
   const handleCardKeyDown = (event) => {
     if (event.target !== event.currentTarget) {
       return;
@@ -9,6 +9,11 @@ function PosterCard({ item, isAdded, onAdd, onOpenDetail }) {
       onOpenDetail();
     }
   };
+
+  const isNearLevelMatch =
+    Boolean(levelFilter) &&
+    levelFilter !== "Tümü" &&
+    item.estimatedLevel !== levelFilter;
 
   return (
     <article
@@ -29,7 +34,18 @@ function PosterCard({ item, isAdded, onAdd, onOpenDetail }) {
         )}
 
         {item.estimatedLevel && (
-          <span className="poster-level-badge">{item.estimatedLevel}</span>
+          <span
+            className={`poster-level-badge${
+              isNearLevelMatch ? " poster-level-badge--near" : ""
+            }`}
+            title={
+              isNearLevelMatch
+                ? "Bu içerik seçtiğin seviyeye yakın olduğu için gösteriliyor"
+                : undefined
+            }
+          >
+            {item.estimatedLevel}
+          </span>
         )}
 
         <button
