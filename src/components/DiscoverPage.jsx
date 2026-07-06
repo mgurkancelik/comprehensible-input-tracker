@@ -70,7 +70,14 @@ function normalizeTmdbItem(result, type) {
   };
 }
 
-function DiscoverPage({ isItemAdded, onAddToWatchlist }) {
+function DiscoverPage({
+  isItemAdded,
+  onAddToWatchlist,
+  contents,
+  onSyncSeriesTotalEpisodes,
+  onSyncSeasonEpisodes,
+  onToggleEpisodeWatched,
+}) {
   const [activeCategory, setActiveCategory] = useState(CATEGORIES[0].key);
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState("loading");
@@ -401,6 +408,10 @@ function DiscoverPage({ isItemAdded, onAddToWatchlist }) {
           isAdded={isItemAdded(selectedItem)}
           onAdd={() => onAddToWatchlist(selectedItem)}
           onClose={() => setSelectedItem(null)}
+          contents={contents}
+          onSyncSeriesTotalEpisodes={onSyncSeriesTotalEpisodes}
+          onSyncSeasonEpisodes={onSyncSeasonEpisodes}
+          onToggleEpisodeWatched={onToggleEpisodeWatched}
         />
       )}
     </section>

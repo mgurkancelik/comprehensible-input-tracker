@@ -69,6 +69,14 @@ export async function searchMulti(query, page = 1) {
   return { movies, series };
 }
 
+export function getSeriesDetails(seriesId) {
+  return tmdbFetch(`/tv/${seriesId}`);
+}
+
+export function getSeasonDetails(seriesId, seasonNumber) {
+  return tmdbFetch(`/tv/${seriesId}/season/${seasonNumber}`);
+}
+
 export function getImageUrl(path, size = "w342") {
   if (!path) {
     return null;

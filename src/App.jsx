@@ -337,6 +337,7 @@ function App() {
     estimatedLevel = "",
     tmdbRating = null,
     releaseYear = null,
+    seasons = [],
   }) => {
     const safeMinutes = toSafeNumber(minutesPerEpisode);
 
@@ -364,6 +365,7 @@ function App() {
       estimatedLevel,
       tmdbRating,
       releaseYear,
+      seasons,
     };
   };
 
@@ -414,6 +416,170 @@ function App() {
     });
 
     setContents([...contents, newContent]);
+  };
+
+  const computeAverageRuntime = (seasonsList, fallback) => {
+    const runtimes = seasonsList
+      .flatMap((season) => season.episodes)
+      .map((episode) => episode.runtime)
+      .filter((runtime) => typeof runtime === "number" && runtime > 0);
+
+    if (runtimes.length === 0) {
+      return fallback;
+    }
+
+    const total = runtimes.reduce((sum, runtime) => sum + runtime, 0);
+    return Math.round(total / runtimes.length);
+  };
+
+  // Dizi detayları (getSeriesDetails) yüklenince gerçek toplam bölüm sayısını
+  // yazar. Sadece listeye eklenmiş dizi içerikleri için çalışır; film veya
+  // eklenmemiş içeriklerde no-op'tur.
+  const syncSeriesTotalEpisodes = (sourceId, totalEpisodeCount) => {
+    if (!totalEpisodeCount) {
+      return;
+    }
+
+    setContents((prevContents) =>
+      prevContents.map((content) => {
+        if (content.sourceId !== sourceId || content.mediaType !== "tv") {
+          return content;
+        }
+
+        return {
+          ...content,
+          totalEpisodes: totalEpisodeCount,
+        };
+      })
+    );
+  };
+
+  // Bir sezonun bölümleri (getSeasonDetails) yüklenince content.seasons'ı
+  // günceller. Mevcut watched/watchedAt değerleri her zaman korunur, sadece
+  // eksik bölümler eklenir veya güncel açıklama/süre bilgisi tazelenir.
+  const syncSeasonEpisodes = (sourceId, seasonNumber, seasonName, tmdbEpisodes) => {
+    setContents((prevContents) =>
+      prevContents.map((content) => {
+        if (content.sourceId !== sourceId || content.mediaType !== "tv") {
+          return content;
+        }
+
+        const existingSeasons = content.seasons || [];
+        const existingSeason = existingSeasons.find(
+          (season) => season.seasonNumber === seasonNumber
+        );
+
+        const existingEpisodesByNumber = new Map(
+          (existingSeason?.episodes || []).map((episode) => [
+            episode.episodeNumber,
+            episode,
+          ])
+        );
+
+        const mergedEpisodes = tmdbEpisodes.map((episode) => {
+          const existingEpisode = existingEpisodesByNumber.get(
+            episode.episode_number
+          );
+
+          return {
+            id: `tmdb-episode-${episode.id}`,
+            episodeNumber: episode.episode_number,
+            name: episode.name || "",
+            runtime:
+              typeof episode.runtime === "number" ? episode.runtime : null,
+            airDate: episode.air_date || "",
+            overview: episode.overview || "",
+            watched: existingEpisode?.watched || false,
+            watchedAt: existingEpisode?.watchedAt || null,
+          };
+        });
+
+        const updatedSeasons = [
+          ...existingSeasons.filter(
+            (season) => season.seasonNumber !== seasonNumber
+          ),
+          { seasonNumber, name: seasonName, episodes: mergedEpisodes },
+        ];
+
+        const watchedEpisodes = updatedSeasons.reduce(
+          (sum, season) =>
+            sum + season.episodes.filter((episode) => episode.watched).length,
+          0
+        );
+
+        const averageRuntime = computeAverageRuntime(
+          updatedSeasons,
+          content.minutesPerEpisode
+        );
+
+        return {
+          ...content,
+          seasons: updatedSeasons,
+          watchedEpisodes,
+          minutesPerEpisode: averageRuntime,
+          wordsPerEpisode: averageRuntime * 120,
+        };
+      })
+    );
+  };
+
+  // Tek bir bölümün izlendi durumunu değiştirir. Eski içeriklerde seasons
+  // yoksa veya eşleşen bölüm bulunamazsa güvenli şekilde hiçbir şey yapmaz.
+  const toggleEpisodeWatched = (sourceId, seasonNumber, episodeId) => {
+    const today = getToday();
+
+    setContents((prevContents) =>
+      prevContents.map((content) => {
+        if (content.sourceId !== sourceId || content.mediaType !== "tv") {
+          return content;
+        }
+
+        const seasonsList = content.seasons || [];
+
+        const updatedSeasons = seasonsList.map((season) => {
+          if (season.seasonNumber !== seasonNumber) {
+            return season;
+          }
+
+          return {
+            ...season,
+            episodes: season.episodes.map((episode) => {
+              if (episode.id !== episodeId) {
+                return episode;
+              }
+
+              const nextWatched = !episode.watched;
+
+              return {
+                ...episode,
+                watched: nextWatched,
+                watchedAt: nextWatched ? today : null,
+              };
+            }),
+          };
+        });
+
+        const watchedEpisodes = updatedSeasons.reduce(
+          (sum, season) =>
+            sum + season.episodes.filter((episode) => episode.watched).length,
+          0
+        );
+
+        const isFinished =
+          content.totalEpisodes > 0 &&
+          watchedEpisodes >= content.totalEpisodes;
+
+        return {
+          ...content,
+          seasons: updatedSeasons,
+          watchedEpisodes,
+          completedDate:
+            isFinished && !content.completedDate
+              ? today
+              : content.completedDate,
+        };
+      })
+    );
   };
 
   const totalWatchedMinutes = contents.reduce(
@@ -1118,6 +1284,10 @@ function App() {
           <DiscoverPage
             isItemAdded={isDiscoveryItemAdded}
             onAddToWatchlist={addDiscoveryItemToWatchlist}
+            contents={contents}
+            onSyncSeriesTotalEpisodes={syncSeriesTotalEpisodes}
+            onSyncSeasonEpisodes={syncSeasonEpisodes}
+            onToggleEpisodeWatched={toggleEpisodeWatched}
           />
         )}
 
