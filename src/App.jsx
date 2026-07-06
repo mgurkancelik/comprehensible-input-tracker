@@ -330,10 +330,13 @@ function App() {
     minutesPerEpisode,
     source = "manual",
     sourceId = null,
+    mediaType = null,
     posterUrl = null,
     genre = "",
     overview = "",
     estimatedLevel = "",
+    tmdbRating = null,
+    releaseYear = null,
   }) => {
     const safeMinutes = toSafeNumber(minutesPerEpisode);
 
@@ -354,10 +357,13 @@ function App() {
       watchLogs: [],
       source,
       sourceId,
+      mediaType,
       posterUrl,
       genre,
       overview,
       estimatedLevel,
+      tmdbRating,
+      releaseYear,
     };
   };
 
@@ -371,12 +377,24 @@ function App() {
     setContents([...contents, newContent]);
   };
 
-  const addDiscoveryItemToWatchlist = (item) => {
-    const alreadyAdded = contents.some(
-      (content) => content.sourceId === item.id
-    );
+  const isDiscoveryItemAdded = (item) => {
+    return contents.some((content) => {
+      if (content.source !== "tmdb") {
+        return false;
+      }
 
-    if (alreadyAdded) {
+      if (item.id) {
+        return content.sourceId === item.id;
+      }
+
+      return (
+        content.title === item.title && content.mediaType === item.mediaType
+      );
+    });
+  };
+
+  const addDiscoveryItemToWatchlist = (item) => {
+    if (isDiscoveryItemAdded(item)) {
       return;
     }
 
@@ -386,10 +404,13 @@ function App() {
       minutesPerEpisode: item.minutesPerEpisode,
       source: "tmdb",
       sourceId: item.id,
+      mediaType: item.mediaType,
       posterUrl: item.posterUrl,
       genre: item.genre,
       overview: item.overview,
       estimatedLevel: item.estimatedLevel,
+      tmdbRating: item.rating,
+      releaseYear: item.year,
     });
 
     setContents([...contents, newContent]);
@@ -713,11 +734,41 @@ function App() {
     return (
       <div className="content-card" key={item.id}>
         <div className="card-top">
-          <div>
-            <h3>{item.title}</h3>
-            <p>
-              {item.type} · {getStatus(item)}
-            </p>
+          <div className="card-top-main">
+            {item.posterUrl && (
+              <img
+                src={item.posterUrl}
+                alt={`${item.title} posteri`}
+                className="card-thumbnail"
+              />
+            )}
+
+            <div>
+              <h3>{item.title}</h3>
+              <p>
+                {item.type} · {getStatus(item)}
+              </p>
+
+              {(item.tmdbRating || item.estimatedLevel) && (
+                <div className="card-badges">
+                  {item.tmdbRating ? (
+                    <span className="card-badge">
+                      ⭐ {item.tmdbRating.toFixed(1)}
+                    </span>
+                  ) : null}
+
+                  {item.estimatedLevel ? (
+                    <span className="card-badge card-badge--level">
+                      {item.estimatedLevel}
+                    </span>
+                  ) : null}
+                </div>
+              )}
+
+              {item.overview && (
+                <p className="card-overview">{item.overview}</p>
+              )}
+            </div>
           </div>
 
           <button
@@ -1065,7 +1116,7 @@ function App() {
 
         {activePage === "discover" && (
           <DiscoverPage
-            contents={contents}
+            isItemAdded={isDiscoveryItemAdded}
             onAddToWatchlist={addDiscoveryItemToWatchlist}
           />
         )}

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-function ContentDetailModal({ item, onClose }) {
+function ContentDetailModal({ item, isAdded, onAdd, onClose }) {
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
@@ -86,6 +86,17 @@ function ContentDetailModal({ item, onClose }) {
           </div>
 
           <p className="modal-overview">{item.overview}</p>
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              className={`modal-add-btn${isAdded ? " modal-add-btn--added" : ""}`}
+              onClick={onAdd}
+              disabled={isAdded}
+            >
+              {isAdded ? "✓ Eklendi" : "İzleyecekler Listeme Ekle"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

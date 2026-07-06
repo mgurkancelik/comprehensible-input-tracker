@@ -65,3 +65,21 @@ export function getGenreLabel(genreIds = []) {
     .slice(0, 2)
     .join(", ");
 }
+
+const ANIMATION_GENRE_ID = 16;
+
+const DEFAULT_MOVIE_MINUTES = 110;
+const DEFAULT_SERIES_MINUTES = 45;
+const ANIMATED_MOVIE_MINUTES = 90;
+const ANIMATED_SERIES_MINUTES = 22;
+
+export function estimateMinutesPerEpisode(type, genreIds = []) {
+  const isAnimation =
+    Array.isArray(genreIds) && genreIds.includes(ANIMATION_GENRE_ID);
+
+  if (type === "Film") {
+    return isAnimation ? ANIMATED_MOVIE_MINUTES : DEFAULT_MOVIE_MINUTES;
+  }
+
+  return isAnimation ? ANIMATED_SERIES_MINUTES : DEFAULT_SERIES_MINUTES;
+}

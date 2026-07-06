@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import PosterCard from "./PosterCard";
 import ContentDetailModal from "./ContentDetailModal";
-import { estimateLevel, getGenreLabel } from "../utils/level";
+import {
+  estimateLevel,
+  getGenreLabel,
+  estimateMinutesPerEpisode,
+} from "../utils/level";
 import {
   getPopularMovies,
   getTopRatedMovies,
@@ -9,9 +13,6 @@ import {
   getTopRatedSeries,
   getImageUrl,
 } from "../services/tmdb";
-
-const DEFAULT_MOVIE_MINUTES = 110;
-const DEFAULT_SERIES_MINUTES = 45;
 
 const CATEGORIES = [
   {
@@ -54,16 +55,16 @@ function normalizeTmdbItem(result, type) {
     year,
     rating,
     type,
+    mediaType: type === "Film" ? "movie" : "tv",
     genre: getGenreLabel(genreIds),
     estimatedLevel: estimateLevel(genreIds),
     overview: result.overview || "Bu içerik için özet bulunmuyor.",
     posterUrl: getImageUrl(result.poster_path),
-    minutesPerEpisode:
-      type === "Film" ? DEFAULT_MOVIE_MINUTES : DEFAULT_SERIES_MINUTES,
+    minutesPerEpisode: estimateMinutesPerEpisode(type, genreIds),
   };
 }
 
-function DiscoverPage({ contents, onAddToWatchlist }) {
+function DiscoverPage({ isItemAdded, onAddToWatchlist }) {
   const [activeCategory, setActiveCategory] = useState(CATEGORIES[0].key);
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState("loading");
@@ -166,7 +167,7 @@ function DiscoverPage({ contents, onAddToWatchlist }) {
             <PosterCard
               key={item.id}
               item={item}
-              isAdded={contents.some((content) => content.sourceId === item.id)}
+              isAdded={isItemAdded(item)}
               onAdd={() => onAddToWatchlist(item)}
               onOpenDetail={() => setSelectedItem(item)}
             />
@@ -177,6 +178,8 @@ function DiscoverPage({ contents, onAddToWatchlist }) {
       {selectedItem && (
         <ContentDetailModal
           item={selectedItem}
+          isAdded={isItemAdded(selectedItem)}
+          onAdd={() => onAddToWatchlist(selectedItem)}
           onClose={() => setSelectedItem(null)}
         />
       )}
