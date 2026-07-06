@@ -1,87 +1,120 @@
+import { useEffect, useState } from "react";
 import PosterCard from "./PosterCard";
+import ContentDetailModal from "./ContentDetailModal";
+import { estimateLevel, getGenreLabel } from "../utils/level";
+import {
+  getPopularMovies,
+  getTopRatedMovies,
+  getPopularSeries,
+  getTopRatedSeries,
+  getImageUrl,
+} from "../services/tmdb";
 
-const MOCK_DISCOVER_ITEMS = [
+const DEFAULT_MOVIE_MINUTES = 110;
+const DEFAULT_SERIES_MINUTES = 45;
+
+const CATEGORIES = [
   {
-    id: "mock-movie-1",
-    title: "Inception",
-    year: 2010,
-    rating: 8.4,
+    key: "popularMovies",
+    label: "Popüler Filmler",
     type: "Film",
-    genre: "Bilim Kurgu",
-    estimatedLevel: "B2",
-    overview:
-      "Rüyalara girip fikir çalabilen bir hırsızın, bu sefer bir fikir ekmesi gereken imkansız görevi.",
-    posterUrl: null,
-    minutesPerEpisode: 148,
+    fetcher: getPopularMovies,
   },
   {
-    id: "mock-movie-2",
-    title: "Zindan ve Ejderha",
-    year: 2023,
-    rating: 7.3,
+    key: "topRatedMovies",
+    label: "Top Rated Filmler",
     type: "Film",
-    genre: "Fantastik",
-    estimatedLevel: "B1",
-    overview:
-      "Bir grup maceracının kayıp bir eşyayı bulmak için çıktığı, mizahla dolu bir fantastik yolculuk.",
-    posterUrl: null,
-    minutesPerEpisode: 134,
+    fetcher: getTopRatedMovies,
   },
   {
-    id: "mock-movie-3",
-    title: "Kayıp Şehir",
-    year: 2022,
-    rating: 6.8,
-    type: "Film",
-    genre: "Macera",
-    estimatedLevel: "A2-B1",
-    overview:
-      "Bir romans yazarının, kitaplarındaki maceraların içinde bulduğu gerçek bir kurtarma operasyonu.",
-    posterUrl: null,
-    minutesPerEpisode: 112,
-  },
-  {
-    id: "mock-series-1",
-    title: "Breaking Bad",
-    year: 2008,
-    rating: 8.9,
+    key: "popularSeries",
+    label: "Popüler Diziler",
     type: "Dizi",
-    genre: "Suç, Dram",
-    estimatedLevel: "B2",
-    overview:
-      "Kimya öğretmeni Walter White'ın uyuşturucu dünyasına adım atmasını konu alan gerilim dolu bir dizi.",
-    posterUrl: null,
-    minutesPerEpisode: 47,
+    fetcher: getPopularSeries,
   },
   {
-    id: "mock-series-2",
-    title: "Modern Family",
-    year: 2009,
-    rating: 8.5,
+    key: "topRatedSeries",
+    label: "Top Rated Diziler",
     type: "Dizi",
-    genre: "Komedi",
-    estimatedLevel: "B1-B2",
-    overview:
-      "Üç farklı ailenin günlük hayatını mockumentary tarzında anlatan sevilen bir aile komedisi.",
-    posterUrl: null,
-    minutesPerEpisode: 25,
-  },
-  {
-    id: "mock-series-3",
-    title: "Avatar: The Last Airbender",
-    year: 2005,
-    rating: 8.6,
-    type: "Dizi",
-    genre: "Animasyon, Macera",
-    estimatedLevel: "A2-B1",
-    overview:
-      "Dört elementi kontrol edebilen halkların dünyasında barışı geri getirmeye çalışan genç bir Avatar'ın hikayesi.",
-    posterUrl: null,
-    minutesPerEpisode: 23,
+    fetcher: getTopRatedSeries,
   },
 ];
 
+function normalizeTmdbItem(result, type) {
+  const title = result.title || result.name || "Başlıksız";
+  const releaseDate = result.release_date || result.first_air_date || "";
+  const year = releaseDate ? releaseDate.slice(0, 4) : "—";
+  const rating =
+    typeof result.vote_average === "number" ? result.vote_average : 0;
+  const genreIds = result.genre_ids || [];
+
+  return {
+    id: `tmdb-${type === "Film" ? "movie" : "tv"}-${result.id}`,
+    title,
+    year,
+    rating,
+    type,
+    genre: getGenreLabel(genreIds),
+    estimatedLevel: estimateLevel(genreIds),
+    overview: result.overview || "Bu içerik için özet bulunmuyor.",
+    posterUrl: getImageUrl(result.poster_path),
+    minutesPerEpisode:
+      type === "Film" ? DEFAULT_MOVIE_MINUTES : DEFAULT_SERIES_MINUTES,
+  };
+}
+
 function DiscoverPage({ contents, onAddToWatchlist }) {
+  const [activeCategory, setActiveCategory] = useState(CATEGORIES[0].key);
+  const [items, setItems] = useState([]);
+  const [status, setStatus] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
+  const [selectedItem, setSelectedItem] = useState(null);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadCategory = async () => {
+      setStatus("loading");
+      setErrorMessage("");
+
+      try {
+        const category = CATEGORIES.find((item) => item.key === activeCategory);
+        const results = await category.fetcher();
+
+        if (isCancelled) {
+          return;
+        }
+
+        const normalized = results.map((result) =>
+          normalizeTmdbItem(result, category.type)
+        );
+
+        setItems(normalized);
+        setStatus("success");
+      } catch (error) {
+        if (isCancelled) {
+          return;
+        }
+
+        setErrorMessage(
+          error.message || "İçerikler yüklenirken bir sorun oluştu."
+        );
+        setStatus("error");
+      }
+    };
+
+    loadCategory();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeCategory, reloadToken]);
+
+  const retryLoading = () => {
+    setReloadToken((token) => token + 1);
+  };
+
   return (
     <section className="form-section discover-page">
       <div className="page-title">
@@ -92,21 +125,61 @@ function DiscoverPage({ contents, onAddToWatchlist }) {
         </p>
       </div>
 
-      <p className="empty-text">
-        Şu anda örnek (mock) verilerle önizleme yapıyorsun — gerçek TMDb
-        verisi bir sonraki adımda bağlanacak.
-      </p>
-
-      <div className="poster-grid">
-        {MOCK_DISCOVER_ITEMS.map((item) => (
-          <PosterCard
-            key={item.id}
-            item={item}
-            isAdded={contents.some((content) => content.sourceId === item.id)}
-            onAdd={() => onAddToWatchlist(item)}
-          />
+      <div className="discover-tabs">
+        {CATEGORIES.map((category) => (
+          <button
+            key={category.key}
+            type="button"
+            className={activeCategory === category.key ? "nav-active" : ""}
+            aria-current={activeCategory === category.key ? "page" : undefined}
+            onClick={() => setActiveCategory(category.key)}
+          >
+            {category.label}
+          </button>
         ))}
       </div>
+
+      {status === "error" && (
+        <div className="discover-error">
+          <p>⚠️ {errorMessage}</p>
+          <button type="button" onClick={retryLoading}>
+            Tekrar Dene
+          </button>
+        </div>
+      )}
+
+      {status === "loading" && (
+        <div className="poster-grid" aria-busy="true" aria-label="Yükleniyor">
+          {Array.from({ length: 8 }).map((_, index) => (
+            <div className="poster-skeleton" key={index} />
+          ))}
+        </div>
+      )}
+
+      {status === "success" && items.length === 0 && (
+        <p className="empty-text">Bu kategoride şu anda gösterilecek içerik yok.</p>
+      )}
+
+      {status === "success" && items.length > 0 && (
+        <div className="poster-grid">
+          {items.map((item) => (
+            <PosterCard
+              key={item.id}
+              item={item}
+              isAdded={contents.some((content) => content.sourceId === item.id)}
+              onAdd={() => onAddToWatchlist(item)}
+              onOpenDetail={() => setSelectedItem(item)}
+            />
+          ))}
+        </div>
+      )}
+
+      {selectedItem && (
+        <ContentDetailModal
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+        />
+      )}
     </section>
   );
 }

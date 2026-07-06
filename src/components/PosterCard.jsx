@@ -1,6 +1,24 @@
-function PosterCard({ item, isAdded, onAdd }) {
+function PosterCard({ item, isAdded, onAdd, onOpenDetail }) {
+  const handleCardKeyDown = (event) => {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onOpenDetail();
+    }
+  };
+
   return (
-    <article className="poster-card">
+    <article
+      className="poster-card"
+      role="button"
+      tabIndex={0}
+      onClick={onOpenDetail}
+      onKeyDown={handleCardKeyDown}
+      aria-label={`${item.title} detaylarını görüntüle`}
+    >
       <div className="poster-image">
         {item.posterUrl ? (
           <img src={item.posterUrl} alt={`${item.title} posteri`} loading="lazy" />
@@ -17,7 +35,10 @@ function PosterCard({ item, isAdded, onAdd }) {
         <button
           type="button"
           className={`poster-add-btn${isAdded ? " poster-add-btn--added" : ""}`}
-          onClick={onAdd}
+          onClick={(event) => {
+            event.stopPropagation();
+            onAdd();
+          }}
           disabled={isAdded}
           aria-label={
             isAdded
@@ -36,7 +57,7 @@ function PosterCard({ item, isAdded, onAdd }) {
           {item.year} · {item.type} · {item.genre}
         </p>
 
-        <p className="poster-rating">⭐ {item.rating.toFixed(1)}</p>
+        <p className="poster-rating">⭐ {(item.rating ?? 0).toFixed(1)}</p>
 
         <p className="poster-overview">{item.overview}</p>
       </div>

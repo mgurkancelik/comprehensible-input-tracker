@@ -372,6 +372,14 @@ function App() {
   };
 
   const addDiscoveryItemToWatchlist = (item) => {
+    const alreadyAdded = contents.some(
+      (content) => content.sourceId === item.id
+    );
+
+    if (alreadyAdded) {
+      return;
+    }
+
     const newContent = buildWatchlistContent({
       title: item.title,
       type: item.type,
