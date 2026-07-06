@@ -59,47 +59,79 @@ function StatsPanel({ contents }) {
     (item) => getStatus(item) === "İzlediklerim"
   ).length;
 
+  const stats = [
+    {
+      key: "total",
+      icon: "⏱️",
+      tone: "primary",
+      label: "Toplam Input",
+      value: `${(totalMinutes / 60).toFixed(1)} saat`,
+    },
+    {
+      key: "last14",
+      icon: "📆",
+      tone: "primary",
+      label: "Son 14 Gün",
+      value: `${(lastDaysMinutes / 60).toFixed(1)} saat`,
+    },
+    {
+      key: "words",
+      icon: "🧠",
+      tone: "success",
+      label: "Toplam Kelime",
+      value: totalWords.toLocaleString("tr-TR"),
+    },
+    {
+      key: "episodes",
+      icon: "▶️",
+      tone: "primary",
+      label: "İzlenen Bölüm",
+      value: totalEpisodes,
+    },
+    {
+      key: "watchLater",
+      icon: "📌",
+      tone: "neutral",
+      label: "İzleyecekler",
+      value: watchLaterCount,
+    },
+    {
+      key: "watching",
+      icon: "🎬",
+      tone: "primary",
+      label: "İzleniyor",
+      value: watchingCount,
+    },
+    {
+      key: "completed",
+      icon: "✅",
+      tone: "success",
+      label: "İzlediklerim",
+      value: completedCount,
+    },
+    {
+      key: "count",
+      icon: "📚",
+      tone: "neutral",
+      label: "İçerik Sayısı",
+      value: contents.length,
+    },
+  ];
+
   return (
     <section className="stats" aria-label="İstatistikler">
-      <div className="stat-card">
-        <span>Toplam Input</span>
-        <strong>{(totalMinutes / 60).toFixed(1)} saat</strong>
-      </div>
+      {stats.map((stat) => (
+        <div className={`stat-card stat-card--${stat.tone}`} key={stat.key}>
+          <div className="stat-icon" aria-hidden="true">
+            {stat.icon}
+          </div>
 
-      <div className="stat-card">
-        <span>Son 14 Gün</span>
-        <strong>{(lastDaysMinutes / 60).toFixed(1)} saat</strong>
-      </div>
-
-      <div className="stat-card">
-        <span>Toplam Kelime</span>
-        <strong>{totalWords.toLocaleString("tr-TR")}</strong>
-      </div>
-
-      <div className="stat-card">
-        <span>İzlenen Bölüm</span>
-        <strong>{totalEpisodes}</strong>
-      </div>
-
-      <div className="stat-card">
-        <span>İzleyecekler</span>
-        <strong>{watchLaterCount}</strong>
-      </div>
-
-      <div className="stat-card">
-        <span>İzleniyor</span>
-        <strong>{watchingCount}</strong>
-      </div>
-
-      <div className="stat-card">
-        <span>İzlediklerim</span>
-        <strong>{completedCount}</strong>
-      </div>
-
-      <div className="stat-card">
-        <span>İçerik Sayısı</span>
-        <strong>{contents.length}</strong>
-      </div>
+          <div className="stat-body">
+            <span>{stat.label}</span>
+            <strong>{stat.value}</strong>
+          </div>
+        </div>
+      ))}
     </section>
   );
 }

@@ -130,7 +130,10 @@ function RecommendationsPage({ addRecommendationToWatchLater }) {
       <h2>Öneri Listesi</h2>
 
       {filteredRecommendations.length === 0 ? (
-        <p className="empty-text">Bu filtrelere uygun öneri bulunamadı.</p>
+        <p className="empty-text">
+          Bu filtrelere uygun öneri bulunamadı. Farklı bir seviye veya tür
+          seçerek tekrar dene.
+        </p>
       ) : (
         filteredRecommendations.map((item) => (
           <div className="content-card" key={item.id}>

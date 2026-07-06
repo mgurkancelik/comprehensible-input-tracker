@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import StatsPanel from "./components/StatsPanel";
 import RecommendationsPage from "./components/RecommendationsPage";
 import ContentForm from "./components/ContentForm";
+import DiscoverPage from "./components/DiscoverPage";
 import "./App.css";
 
 const THEME_STORAGE_KEY = "ciTrackerTheme";
@@ -85,6 +86,28 @@ function App() {
     }
 
     return item.status || "İzleyecekler";
+  };
+
+  const getLast14DaysMinutes = () => {
+    const today = new Date();
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(today.getDate() - 14);
+
+    return contents.reduce((total, item) => {
+      const logs = item.watchLogs || [];
+
+      const itemMinutes = logs.reduce((sum, log) => {
+        const logDate = new Date(log.date);
+
+        if (logDate >= fourteenDaysAgo && logDate <= today) {
+          return sum + (log.minutes || 0);
+        }
+
+        return sum;
+      }, 0);
+
+      return total + itemMinutes;
+    }, 0);
   };
 
   const handleChange = (event) => {
@@ -301,26 +324,93 @@ function App() {
     );
   };
 
-  const addRecommendationToWatchLater = (recommendation) => {
-  const newContent = {
-    id: Date.now(),
-    title: recommendation.title,
-    type: recommendation.type,
-    status: "İzleyecekler",
-    startDate: "",
-    targetEndDate: "",
-    completedDate: "",
-    totalEpisodes: 0,
-    watchedEpisodes: 0,
-    minutesPerEpisode: recommendation.minutesPerEpisode,
-    wordsPerEpisode: recommendation.minutesPerEpisode * 120,
-    comprehension: 0,
-    difficulty: "",
-    watchLogs: [],
+  const buildWatchlistContent = ({
+    title,
+    type,
+    minutesPerEpisode,
+    source = "manual",
+    sourceId = null,
+    posterUrl = null,
+    genre = "",
+    overview = "",
+    estimatedLevel = "",
+  }) => {
+    const safeMinutes = toSafeNumber(minutesPerEpisode);
+
+    return {
+      id: Date.now(),
+      title,
+      type,
+      status: "İzleyecekler",
+      startDate: "",
+      targetEndDate: "",
+      completedDate: "",
+      totalEpisodes: 0,
+      watchedEpisodes: 0,
+      minutesPerEpisode: safeMinutes,
+      wordsPerEpisode: safeMinutes * 120,
+      comprehension: 0,
+      difficulty: "",
+      watchLogs: [],
+      source,
+      sourceId,
+      posterUrl,
+      genre,
+      overview,
+      estimatedLevel,
+    };
   };
 
-  setContents([...contents, newContent]);
-};
+  const addRecommendationToWatchLater = (recommendation) => {
+    const newContent = buildWatchlistContent({
+      title: recommendation.title,
+      type: recommendation.type,
+      minutesPerEpisode: recommendation.minutesPerEpisode,
+    });
+
+    setContents([...contents, newContent]);
+  };
+
+  const addDiscoveryItemToWatchlist = (item) => {
+    const newContent = buildWatchlistContent({
+      title: item.title,
+      type: item.type,
+      minutesPerEpisode: item.minutesPerEpisode,
+      source: "tmdb",
+      sourceId: item.id,
+      posterUrl: item.posterUrl,
+      genre: item.genre,
+      overview: item.overview,
+      estimatedLevel: item.estimatedLevel,
+    });
+
+    setContents([...contents, newContent]);
+  };
+
+  const totalWatchedMinutes = contents.reduce(
+    (sum, item) => sum + item.watchedEpisodes * item.minutesPerEpisode,
+    0
+  );
+
+  const heroHours = (totalWatchedMinutes / 60).toFixed(1);
+
+  const totalWatchedEpisodes = contents.reduce(
+    (sum, item) => sum + item.watchedEpisodes,
+    0
+  );
+
+  const activeWatchingCount = contents.filter(
+    (item) => getStatus(item) === "İzleniyor"
+  ).length;
+
+  const activeWatchLaterCount = contents.filter(
+    (item) => getStatus(item) === "İzleyecekler"
+  ).length;
+
+  const headerStatusMessage =
+    activeWatchingCount === 0
+      ? "İlk içeriğini ekleyerek input takibine başlayabilirsin."
+      : "Input yolculuğun devam ediyor.";
 
   const filteredContents = contents.filter((item) => {
     const matchesSearch = item.title
@@ -704,20 +794,85 @@ function App() {
   };
 
   const renderDashboardPage = () => {
+    const last14DaysMinutes = getLast14DaysMinutes();
+    const last14DaysHours = (last14DaysMinutes / 60).toFixed(1);
+    const hasRecentMomentum = last14DaysMinutes > 0;
+
+    const snapshotNarrative = hasRecentMomentum
+      ? `Bugüne kadar ${heroHours} saat input aldın ve ${totalWatchedEpisodes} bölüm tamamladın. Son 14 günde ${last14DaysHours} saatlik güzel bir ilerleme kaydettin.`
+      : `Bugüne kadar ${heroHours} saat input aldın ve ${totalWatchedEpisodes} bölüm tamamladın. Son 14 günde henüz input eklemedin, küçük bir adım atmaya ne dersin?`;
+
     return (
       <>
+        <section className="summary-card">
+          <div className="summary-head">
+            <h2>🧭 Learning Snapshot</h2>
+            <p>{snapshotNarrative}</p>
+          </div>
+
+          <div className="summary-metrics">
+            <div className="summary-metric">
+              <span>Toplam Input</span>
+              <strong>{heroHours} saat</strong>
+            </div>
+
+            <div className="summary-metric">
+              <span>Son 14 Gün</span>
+              <strong>{last14DaysHours} saat</strong>
+            </div>
+
+            <div className="summary-metric">
+              <span>İzlenen Bölüm</span>
+              <strong>{totalWatchedEpisodes}</strong>
+            </div>
+
+            <div className="summary-metric">
+              <span>Aktif İçerik</span>
+              <strong>{activeWatchingCount}</strong>
+            </div>
+
+            <div className="summary-metric">
+              <span>İzleyecekler</span>
+              <strong>{activeWatchLaterCount}</strong>
+            </div>
+          </div>
+
+          <div className="quick-actions">
+            <p className="quick-actions-label">Hızlı Aksiyonlar</p>
+
+            <div className="quick-actions-row">
+              <a className="quick-action-hint" href="#new-content-anchor">
+                ➕ Yeni içerik ekle
+              </a>
+
+              <button
+                type="button"
+                onClick={() => setActivePage("recommendations")}
+              >
+                🎯 Önerilere git
+              </button>
+
+              <button type="button" onClick={() => setActivePage("tracking")}>
+                📈 Takip çizelgesini gör
+              </button>
+            </div>
+          </div>
+        </section>
+
         <StatsPanel contents={contents} />
 
-        <ContentForm
-          form={form}
-          handleChange={handleChange}
-          addContent={addContent}
-          showSearch={showSearch}
-          setShowSearch={setShowSearch}
-          fetchShowInfo={fetchShowInfo}
-          isFetchingShow={isFetchingShow}
-          markAllInForm={markAllInForm}
-        />
+        <div id="new-content-anchor">
+          <ContentForm
+            form={form}
+            handleChange={handleChange}
+            addContent={addContent}
+            showSearch={showSearch}
+            setShowSearch={setShowSearch}
+            fetchShowInfo={fetchShowInfo}
+            isFetchingShow={isFetchingShow}
+            markAllInForm={markAllInForm}
+          />
+        </div>
 
         <section className="content-list">
           <h2>İçeriklerim</h2>
@@ -753,21 +908,30 @@ function App() {
 
           <h2>📌 İzleyecekler Listem</h2>
           {watchLaterList.length === 0 ? (
-            <p className="empty-text">İzleyecek içerik yok.</p>
+            <p className="empty-text">
+              Henüz izleyecek bir içerik eklemedin. Yukarıdaki formdan ilk
+              içeriğini ekleyerek input takibine başla! 🚀
+            </p>
           ) : (
             watchLaterList.map(renderContentCard)
           )}
 
           <h2>▶️ Şu An İzlediklerim</h2>
           {watchingList.length === 0 ? (
-            <p className="empty-text">Aktif izlenen içerik yok.</p>
+            <p className="empty-text">
+              Şu an aktif izlediğin bir içerik yok. İzleyecekler listenden
+              birini başlatarak ilerlemeye devam et.
+            </p>
           ) : (
             watchingList.map(renderContentCard)
           )}
 
           <h2>✅ İzlediklerim</h2>
           {completedList.length === 0 ? (
-            <p className="empty-text">Henüz bitirilen içerik yok.</p>
+            <p className="empty-text">
+              Henüz tamamlanan içerik yok. İlk içeriğini bitirdiğinde burada
+              görünecek.
+            </p>
           ) : (
             completedList.map(renderContentCard)
           )}
@@ -796,13 +960,23 @@ function App() {
       <nav className="top-nav">
         <button
           className={activePage === "dashboard" ? "nav-active" : ""}
+          aria-current={activePage === "dashboard" ? "page" : undefined}
           onClick={() => setActivePage("dashboard")}
         >
           Dashboard
         </button>
 
         <button
+          className={activePage === "discover" ? "nav-active" : ""}
+          aria-current={activePage === "discover" ? "page" : undefined}
+          onClick={() => setActivePage("discover")}
+        >
+          🔎 Keşfet
+        </button>
+
+        <button
           className={activePage === "tracking" ? "nav-active" : ""}
+          aria-current={activePage === "tracking" ? "page" : undefined}
           onClick={() => setActivePage("tracking")}
         >
           Takip Çizelgesi
@@ -810,6 +984,7 @@ function App() {
 
         <button
           className={activePage === "recommendations" ? "nav-active" : ""}
+          aria-current={activePage === "recommendations" ? "page" : undefined}
           onClick={() => setActivePage("recommendations")}
         >
           Öneriler
@@ -817,6 +992,7 @@ function App() {
 
         <button
           className={activePage === "topMovies" ? "nav-active" : ""}
+          aria-current={activePage === "topMovies" ? "page" : undefined}
           onClick={() => setActivePage("topMovies")}
         >
           Top Rated Filmler
@@ -824,6 +1000,7 @@ function App() {
 
         <button
           className={activePage === "topSeries" ? "nav-active" : ""}
+          aria-current={activePage === "topSeries" ? "page" : undefined}
           onClick={() => setActivePage("topSeries")}
         >
           Top Rated Diziler
@@ -831,6 +1008,7 @@ function App() {
 
         <button
           className={activePage === "random" ? "nav-active" : ""}
+          aria-current={activePage === "random" ? "page" : undefined}
           onClick={() => setActivePage("random")}
         >
           Rastgele Öner
@@ -838,6 +1016,7 @@ function App() {
 
         <button
           className={activePage === "about" ? "nav-active" : ""}
+          aria-current={activePage === "about" ? "page" : undefined}
           onClick={() => setActivePage("about")}
         >
           Hakkında
@@ -852,20 +1031,37 @@ function App() {
             theme === "dark" ? "Açık temaya geç" : "Koyu temaya geç"
           }
         >
-          {theme === "dark" ? "☀️ Açık Tema" : "🌙 Koyu Tema"}
+          <span aria-hidden="true">{theme === "dark" ? "☀️" : "🌙"}</span>
+          <span className="theme-toggle-label">
+            {theme === "dark" ? "Açık Tema" : "Koyu Tema"}
+          </span>
         </button>
       </nav>
 
       <main className="app">
         <header className="header">
+          <span className="header-kicker">📚 Comprehensible Input Takibi</span>
           <h1>Comprehensible Input Tracker</h1>
           <p>
             İngilizce input süreni, bölüm ilerlemeni, hedeflerini ve kelime
             maruziyetini takip et.
           </p>
+          <p className="header-status">{headerStatusMessage}</p>
+          <div className="header-highlight">
+            <span>⏱️ Toplam input:</span>
+            <strong>{heroHours} saat</strong>
+          </div>
         </header>
 
         {activePage === "dashboard" && renderDashboardPage()}
+
+        {activePage === "discover" && (
+          <DiscoverPage
+            contents={contents}
+            onAddToWatchlist={addDiscoveryItemToWatchlist}
+          />
+        )}
+
         {activePage === "tracking" && renderTrackingPage()}
 
         {activePage === "recommendations" && (
