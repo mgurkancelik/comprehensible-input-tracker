@@ -37,7 +37,11 @@ function RecommendationsPage({ addRecommendationToWatchLater }) {
       </div>
 
       <div className="filters">
+        <label className="visually-hidden" htmlFor="rec-level-filter">
+          Seviyeye göre filtrele
+        </label>
         <select
+          id="rec-level-filter"
           value={selectedLevel}
           onChange={(event) => setSelectedLevel(event.target.value)}
         >
@@ -49,7 +53,11 @@ function RecommendationsPage({ addRecommendationToWatchLater }) {
           <option>B2</option>
         </select>
 
+        <label className="visually-hidden" htmlFor="rec-type-filter">
+          Türe göre filtrele
+        </label>
         <select
+          id="rec-type-filter"
           value={selectedType}
           onChange={(event) => setSelectedType(event.target.value)}
         >

@@ -13,7 +13,11 @@ function ContentForm({
       <h2>Yeni İçerik Ekle</h2>
 
       <div className="api-search">
+        <label className="visually-hidden" htmlFor="showSearch">
+          Dizi adı ile bilgi çek
+        </label>
         <input
+          id="showSearch"
           value={showSearch}
           onChange={(e) => setShowSearch(e.target.value)}
           placeholder="Dizi adı yaz: Breaking Bad"
@@ -25,90 +29,128 @@ function ContentForm({
       </div>
 
       <form onSubmit={addContent} className="content-form">
-        <input
-          name="title"
-          value={form.title}
-          onChange={handleChange}
-          placeholder="İçerik adı"
-        />
-
-        <select name="type" value={form.type} onChange={handleChange}>
-          <option>Dizi</option>
-          <option>Film</option>
-          <option>Animasyon</option>
-          <option>Anime</option>
-          <option>YouTube</option>
-          <option>Podcast</option>
-        </select>
-
-        <select name="status" value={form.status} onChange={handleChange}>
-          <option>İzleyecekler</option>
-          <option>İzleniyor</option>
-          <option>İzlediklerim</option>
-        </select>
-
-        <input
-          name="startDate"
-          value={form.startDate}
-          onChange={handleChange}
-          type="date"
-        />
-
-        <input
-          name="targetEndDate"
-          value={form.targetEndDate}
-          onChange={handleChange}
-          type="date"
-        />
-
-        <input
-          name="completedDate"
-          value={form.completedDate}
-          onChange={handleChange}
-          type="date"
-        />
-
-        <input
-          name="totalEpisodes"
-          value={form.totalEpisodes}
-          onChange={handleChange}
-          type="number"
-          min="0"
-          placeholder="Toplam bölüm"
-        />
-
-        <div className="inline-field">
+        <label className="field" htmlFor="title">
+          <span className="field-label">İçerik adı</span>
           <input
-            name="watchedEpisodes"
-            value={form.watchedEpisodes}
+            id="title"
+            name="title"
+            value={form.title}
+            onChange={handleChange}
+            placeholder="İçerik adı"
+          />
+        </label>
+
+        <label className="field" htmlFor="type">
+          <span className="field-label">Tür</span>
+          <select id="type" name="type" value={form.type} onChange={handleChange}>
+            <option>Dizi</option>
+            <option>Film</option>
+            <option>Animasyon</option>
+            <option>Anime</option>
+            <option>YouTube</option>
+            <option>Podcast</option>
+          </select>
+        </label>
+
+        <label className="field" htmlFor="status">
+          <span className="field-label">Durum</span>
+          <select id="status" name="status" value={form.status} onChange={handleChange}>
+            <option>İzleyecekler</option>
+            <option>İzleniyor</option>
+            <option>İzlediklerim</option>
+          </select>
+        </label>
+
+        <label className="field" htmlFor="startDate">
+          <span className="field-label">Başlangıç tarihi</span>
+          <input
+            id="startDate"
+            name="startDate"
+            value={form.startDate}
+            onChange={handleChange}
+            type="date"
+          />
+        </label>
+
+        <label className="field" htmlFor="targetEndDate">
+          <span className="field-label">Hedef bitiş tarihi</span>
+          <input
+            id="targetEndDate"
+            name="targetEndDate"
+            value={form.targetEndDate}
+            onChange={handleChange}
+            type="date"
+          />
+        </label>
+
+        <label className="field" htmlFor="completedDate">
+          <span className="field-label">Gerçek bitiş tarihi</span>
+          <input
+            id="completedDate"
+            name="completedDate"
+            value={form.completedDate}
+            onChange={handleChange}
+            type="date"
+          />
+        </label>
+
+        <label className="field" htmlFor="totalEpisodes">
+          <span className="field-label">Toplam bölüm</span>
+          <input
+            id="totalEpisodes"
+            name="totalEpisodes"
+            value={form.totalEpisodes}
             onChange={handleChange}
             type="number"
             min="0"
-            placeholder="İzlenen bölüm"
+            placeholder="Toplam bölüm"
           />
+        </label>
 
-          <button type="button" onClick={markAllInForm}>
-            Tümünü seç
-          </button>
+        <div className="field">
+          <span className="field-label">İzlenen bölüm</span>
+          <div className="inline-field">
+            <input
+              id="watchedEpisodes"
+              name="watchedEpisodes"
+              value={form.watchedEpisodes}
+              onChange={handleChange}
+              type="number"
+              min="0"
+              placeholder="İzlenen bölüm"
+            />
+
+            <button type="button" onClick={markAllInForm}>
+              Tümünü seç
+            </button>
+          </div>
         </div>
 
-        <input
-          name="minutesPerEpisode"
-          value={form.minutesPerEpisode}
-          onChange={handleChange}
-          type="number"
-          min="0"
-          placeholder="Bölüm süresi/dk"
-        />
+        <label className="field" htmlFor="minutesPerEpisode">
+          <span className="field-label">Bölüm süresi (dk)</span>
+          <input
+            id="minutesPerEpisode"
+            name="minutesPerEpisode"
+            value={form.minutesPerEpisode}
+            onChange={handleChange}
+            type="number"
+            min="0"
+            placeholder="Bölüm süresi/dk"
+          />
+        </label>
 
-        <input
-          name="wordsPerEpisode"
-          value={form.wordsPerEpisode}
-          onChange={handleChange}
-          type="number"
-          min="0"
-          placeholder="Kelime/bölüm"
-        />
+        <label className="field" htmlFor="wordsPerEpisode">
+          <span className="field-label">Kelime / bölüm</span>
+          <input
+            id="wordsPerEpisode"
+            name="wordsPerEpisode"
+            value={form.wordsPerEpisode}
+            onChange={handleChange}
+            type="number"
+            min="0"
+            placeholder="Kelime/bölüm"
+          />
+        </label>
 
         <button type="submit">Ekle</button>
       </form>

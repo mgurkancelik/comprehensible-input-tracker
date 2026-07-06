@@ -4,8 +4,23 @@ import RecommendationsPage from "./components/RecommendationsPage";
 import ContentForm from "./components/ContentForm";
 import "./App.css";
 
+const THEME_STORAGE_KEY = "ciTrackerTheme";
+
 function App() {
   const [activePage, setActivePage] = useState("dashboard");
+
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem(THEME_STORAGE_KEY) || "dark";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prevTheme) => (prevTheme === "dark" ? "light" : "dark"));
+  };
 
   const [contents, setContents] = useState(() => {
     const savedContents = localStorage.getItem("inputContentsV5");
@@ -206,7 +221,15 @@ function App() {
     setShowSearch("");
   };
 
-  const deleteContent = (id) => {
+  const deleteContent = (id, title) => {
+    const confirmed = window.confirm(
+      `"${title}" içeriğini silmek istediğine emin misin? Bu işlem geri alınamaz.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
     setContents(contents.filter((item) => item.id !== id));
   };
 
@@ -599,7 +622,10 @@ function App() {
             </p>
           </div>
 
-          <button className="delete-btn" onClick={() => deleteContent(item.id)}>
+          <button
+            className="delete-btn"
+            onClick={() => deleteContent(item.id, item.title)}
+          >
             Sil
           </button>
         </div>
@@ -608,7 +634,7 @@ function App() {
           <div
             className="circle-progress"
             style={{
-              background: `conic-gradient(#8b5cf6 ${progress}%, #222 0)`,
+              background: `conic-gradient(var(--color-primary) ${progress}%, var(--color-surface-alt) 0)`,
             }}
           >
             <div>{progress}%</div>
@@ -697,13 +723,21 @@ function App() {
           <h2>İçeriklerim</h2>
 
           <div className="filters">
+            <label className="visually-hidden" htmlFor="content-search">
+              İçerik ara
+            </label>
             <input
+              id="content-search"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               placeholder="İçerik ara..."
             />
 
+            <label className="visually-hidden" htmlFor="content-type-filter">
+              Türe göre filtrele
+            </label>
             <select
+              id="content-type-filter"
               value={selectedType}
               onChange={(e) => setSelectedType(e.target.value)}
             >
@@ -807,6 +841,18 @@ function App() {
           onClick={() => setActivePage("about")}
         >
           Hakkında
+        </button>
+
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={toggleTheme}
+          aria-pressed={theme === "light"}
+          aria-label={
+            theme === "dark" ? "Açık temaya geç" : "Koyu temaya geç"
+          }
+        >
+          {theme === "dark" ? "☀️ Açık Tema" : "🌙 Koyu Tema"}
         </button>
       </nav>
 

@@ -60,7 +60,7 @@ function StatsPanel({ contents }) {
   ).length;
 
   return (
-    <section className="stats">
+    <section className="stats" aria-label="İstatistikler">
       <div className="stat-card">
         <span>Toplam Input</span>
         <strong>{(totalMinutes / 60).toFixed(1)} saat</strong>
