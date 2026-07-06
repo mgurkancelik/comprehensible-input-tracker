@@ -1,3 +1,18 @@
+import { useState } from "react";
+
+const STATUS_TABS = [
+  { value: "İzleyecekler", label: "İzleyeceğim", icon: "📌" },
+  { value: "İzleniyor", label: "İzliyorum", icon: "▶️" },
+  { value: "İzlediklerim", label: "İzledim", icon: "✅" },
+];
+
+const EMPTY_MESSAGES = {
+  İzleyecekler:
+    "Henüz izleyeceğin içerik yok. Keşfet sayfasından içerik ekleyebilirsin.",
+  İzleniyor: "Şu an izlediğin bir dizi/film yok.",
+  İzlediklerim: "Tamamladığın içerikler burada görünecek.",
+};
+
 function LibraryPage({
   searchText,
   setSearchText,
@@ -8,6 +23,16 @@ function LibraryPage({
   completedList,
   renderContentCard,
 }) {
+  const [activeTab, setActiveTab] = useState("İzleyecekler");
+
+  const listByStatus = {
+    İzleyecekler: watchLaterList,
+    İzleniyor: watchingList,
+    İzlediklerim: completedList,
+  };
+
+  const activeList = listByStatus[activeTab];
+
   return (
     <section className="content-list">
       <div className="page-title">
@@ -47,35 +72,24 @@ function LibraryPage({
         </select>
       </div>
 
-      <h2>📌 İzleyeceğim</h2>
-      {watchLaterList.length === 0 ? (
-        <p className="empty-text">
-          Henüz izleyecek bir içerik eklemedin. Keşfet sayfasından veya
-          Dashboard'daki formdan ilk içeriğini ekleyerek input takibine
-          başla! 🚀
-        </p>
-      ) : (
-        watchLaterList.map(renderContentCard)
-      )}
+      <div className="library-tabs">
+        {STATUS_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            className={activeTab === tab.value ? "nav-active" : ""}
+            aria-current={activeTab === tab.value ? "page" : undefined}
+            onClick={() => setActiveTab(tab.value)}
+          >
+            {tab.icon} {tab.label} ({listByStatus[tab.value].length})
+          </button>
+        ))}
+      </div>
 
-      <h2>▶️ İzliyorum</h2>
-      {watchingList.length === 0 ? (
-        <p className="empty-text">
-          Şu an aktif izlediğin bir içerik yok. İzleyecekler listenden
-          birini başlatarak ilerlemeye devam et.
-        </p>
+      {activeList.length === 0 ? (
+        <p className="empty-text">{EMPTY_MESSAGES[activeTab]}</p>
       ) : (
-        watchingList.map(renderContentCard)
-      )}
-
-      <h2>✅ İzledim</h2>
-      {completedList.length === 0 ? (
-        <p className="empty-text">
-          Henüz tamamlanan içerik yok. İlk içeriğini bitirdiğinde burada
-          görünecek.
-        </p>
-      ) : (
-        completedList.map(renderContentCard)
+        activeList.map(renderContentCard)
       )}
     </section>
   );

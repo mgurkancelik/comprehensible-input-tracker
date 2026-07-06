@@ -5,9 +5,39 @@ import ContentForm from "./components/ContentForm";
 import DiscoverPage from "./components/DiscoverPage";
 import ContentDetailModal from "./components/ContentDetailModal";
 import LibraryPage from "./components/LibraryPage";
+import NotesModal from "./components/NotesModal";
+import InputGoalCard from "./components/InputGoalCard";
+import {
+  getTotalInputMinutes,
+  getMinutesInRange,
+  getDailyInputBuckets,
+  getMonthlyInputSummary,
+  getInputRecordCounts,
+  formatMinutesLabel,
+} from "./utils/stats";
 import "./App.css";
 
 const THEME_STORAGE_KEY = "ciTrackerTheme";
+const GOAL_STORAGE_KEY = "inputGoalTargetHours";
+const VALID_GOAL_HOURS = [100, 250, 500, 1000];
+
+const STATUS_OPTIONS = [
+  { value: "İzleyecekler", label: "İzleyeceğim" },
+  { value: "İzleniyor", label: "İzliyorum" },
+  { value: "İzlediklerim", label: "İzledim" },
+];
+
+const STATUS_META = {
+  İzleyecekler: { label: "İzleyeceğim", badgeClassName: "" },
+  İzleniyor: {
+    label: "İzliyorum",
+    badgeClassName: "card-badge--status-watching",
+  },
+  İzlediklerim: {
+    label: "İzledim",
+    badgeClassName: "card-badge--status-completed",
+  },
+};
 
 function App() {
   const [activePage, setActivePage] = useState("dashboard");
@@ -24,6 +54,15 @@ function App() {
   const toggleTheme = () => {
     setTheme((prevTheme) => (prevTheme === "dark" ? "light" : "dark"));
   };
+
+  const [goalTargetHours, setGoalTargetHours] = useState(() => {
+    const savedGoal = Number(localStorage.getItem(GOAL_STORAGE_KEY));
+    return VALID_GOAL_HOURS.includes(savedGoal) ? savedGoal : 100;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(GOAL_STORAGE_KEY, String(goalTargetHours));
+  }, [goalTargetHours]);
 
   const [contents, setContents] = useState(() => {
     const savedContents = localStorage.getItem("inputContentsV5");
@@ -55,6 +94,12 @@ function App() {
 
   const [showSearch, setShowSearch] = useState("");
   const [isFetchingShow, setIsFetchingShow] = useState(false);
+  const [showSearchFeedback, setShowSearchFeedback] = useState(null);
+
+  const handleShowSearchChange = (value) => {
+    setShowSearch(value);
+    setShowSearchFeedback(null);
+  };
 
   useEffect(() => {
     localStorage.setItem("inputContentsV5", JSON.stringify(contents));
@@ -95,21 +140,7 @@ function App() {
     const fourteenDaysAgo = new Date();
     fourteenDaysAgo.setDate(today.getDate() - 14);
 
-    return contents.reduce((total, item) => {
-      const logs = item.watchLogs || [];
-
-      const itemMinutes = logs.reduce((sum, log) => {
-        const logDate = new Date(log.date);
-
-        if (logDate >= fourteenDaysAgo && logDate <= today) {
-          return sum + (log.minutes || 0);
-        }
-
-        return sum;
-      }, 0);
-
-      return total + itemMinutes;
-    }, 0);
+    return getMinutesInRange(contents, fourteenDaysAgo, today);
   };
 
   const handleChange = (event) => {
@@ -132,12 +163,16 @@ function App() {
 
   const fetchShowInfo = async () => {
     if (showSearch.trim() === "") {
-      alert("Önce bir dizi adı yaz.");
+      setShowSearchFeedback({
+        type: "error",
+        text: "Önce bir dizi adı yaz.",
+      });
       return;
     }
 
     try {
       setIsFetchingShow(true);
+      setShowSearchFeedback(null);
 
       const response = await fetch(
         `https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(
@@ -146,7 +181,10 @@ function App() {
       );
 
       if (!response.ok) {
-        alert("Dizi bulunamadı.");
+        setShowSearchFeedback({
+          type: "error",
+          text: "Dizi bulunamadı. Farklı bir isim deneyebilirsin.",
+        });
         return;
       }
 
@@ -164,8 +202,16 @@ function App() {
         minutesPerEpisode: runtime,
         wordsPerEpisode: runtime * 120,
       });
+
+      setShowSearchFeedback({
+        type: "success",
+        text: "Bilgiler çekildi, istersen süre ve bölüm sayılarını düzenleyebilirsin.",
+      });
     } catch (error) {
-      alert("Bilgiler çekilirken hata oluştu.");
+      setShowSearchFeedback({
+        type: "error",
+        text: "Bilgiler çekilirken bir sorun oluştu. Tekrar dener misin?",
+      });
       console.log(error);
     } finally {
       setIsFetchingShow(false);
@@ -221,6 +267,7 @@ function App() {
                 minutes: watchedEpisodes * minutesPerEpisode,
                 words: watchedEpisodes * wordsPerEpisode,
                 title: form.title,
+                type: "manual",
               },
             ]
           : [],
@@ -286,6 +333,7 @@ function App() {
               minutes: item.minutesPerEpisode,
               words: item.wordsPerEpisode,
               title: item.title,
+              type: "manual",
             },
           ],
         };
@@ -319,6 +367,7 @@ function App() {
               minutes: remainingEpisodes * item.minutesPerEpisode,
               words: remainingEpisodes * item.wordsPerEpisode,
               title: item.title,
+              type: "manual",
             },
           ],
         };
@@ -698,7 +747,32 @@ function App() {
       ? contents.find((content) => content.id === managingContentId)
       : null;
 
-  const MAX_VISIBLE_SEASON_CHIPS = 4;
+  const [notesModalContentId, setNotesModalContentId] = useState(null);
+
+  const notesModalContent =
+    notesModalContentId !== null
+      ? contents.find((content) => content.id === notesModalContentId)
+      : null;
+
+  // Sadece ilgili content'in notes alanını günceller, başka hiçbir alana
+  // dokunmaz. Yeni içerik oluşturulurken notes alanı hiç eklenmiyor —
+  // sadece kullanıcı gerçekten not yazınca oluşuyor.
+  const updateContentNotes = (contentId, notes) => {
+    setContents((prevContents) =>
+      prevContents.map((content) => {
+        if (content.id !== contentId) {
+          return content;
+        }
+
+        return {
+          ...content,
+          notes,
+        };
+      })
+    );
+  };
+
+  const MAX_VISIBLE_SEASON_CHIPS = 5;
 
   const getSeriesProgressSummary = (item) => {
     const seasonsList = item.seasons || [];
@@ -753,12 +827,10 @@ function App() {
     };
   };
 
-  const totalWatchedMinutes = contents.reduce(
-    (sum, item) => sum + item.watchedEpisodes * item.minutesPerEpisode,
-    0
-  );
+  const totalWatchedMinutes = getTotalInputMinutes(contents);
 
   const heroHours = (totalWatchedMinutes / 60).toFixed(1);
+  const totalInputHours = totalWatchedMinutes / 60;
 
   const totalWatchedEpisodes = contents.reduce(
     (sum, item) => sum + item.watchedEpisodes,
@@ -773,10 +845,21 @@ function App() {
     (item) => getStatus(item) === "İzleyecekler"
   ).length;
 
-  const headerStatusMessage =
-    activeWatchingCount === 0
-      ? "İlk içeriğini ekleyerek input takibine başlayabilirsin."
-      : "Input yolculuğun devam ediyor.";
+  const headerStatusMessage = (() => {
+    if (activeWatchingCount === 0) {
+      return "İlk içeriğini ekleyerek input takibine başlayabilirsin.";
+    }
+
+    if (totalInputHours > 0 && totalInputHours < 100) {
+      return "İlk 100 saat hedefin için iyi bir başlangıç yaptın.";
+    }
+
+    if (totalInputHours >= 100 && totalInputHours < 250) {
+      return "Düzenli input birikimi oluşuyor.";
+    }
+
+    return "Input yolculuğun devam ediyor.";
+  })();
 
   const filteredContents = contents.filter((item) => {
     const matchesSearch = item.title
@@ -815,62 +898,14 @@ function App() {
           day: "2-digit",
           month: "short",
         }),
-        minutes: 0,
-        words: 0,
       });
     }
 
-    contents.forEach((content) => {
-      const logs = content.watchLogs || [];
-
-      logs.forEach((log) => {
-        const day = days.find((item) => item.date === log.date);
-
-        if (day) {
-          day.minutes += log.minutes || 0;
-          day.words += log.words || 0;
-        }
-      });
-    });
-
-    return days;
+    return getDailyInputBuckets(contents, days);
   };
 
   const getMonthlyAnalytics = () => {
-    const months = {};
-
-    contents.forEach((content) => {
-      const logs = content.watchLogs || [];
-
-      logs.forEach((log) => {
-        const date = new Date(log.date);
-
-        const monthKey = date.toLocaleDateString("tr-TR", {
-          month: "long",
-          year: "numeric",
-        });
-
-        if (!months[monthKey]) {
-          months[monthKey] = {
-            label: monthKey,
-            minutes: 0,
-            words: 0,
-            titles: {},
-          };
-        }
-
-        months[monthKey].minutes += log.minutes || 0;
-        months[monthKey].words += log.words || 0;
-
-        if (!months[monthKey].titles[content.title]) {
-          months[monthKey].titles[content.title] = 0;
-        }
-
-        months[monthKey].titles[content.title] += log.minutes || 0;
-      });
-    });
-
-    return Object.values(months);
+    return getMonthlyInputSummary(contents);
   };
 
   const renderLineChart = (data, valueKey, title, valueLabel) => {
@@ -947,6 +982,7 @@ function App() {
   const renderTrackingPage = () => {
     const dailyData = getDailyAnalytics();
     const monthlyData = getMonthlyAnalytics();
+    const inputRecordCounts = getInputRecordCounts(contents);
 
     const lastDaysMinutes = dailyData.reduce(
       (sum, day) => sum + day.minutes,
@@ -965,7 +1001,7 @@ function App() {
         <div className="tracking-summary">
           <div className="stat-card big-stat">
             <span>Son 14 Gün Input</span>
-            <strong>{(lastDaysMinutes / 60).toFixed(1)} saat</strong>
+            <strong>{formatMinutesLabel(lastDaysMinutes)}</strong>
           </div>
 
           <div className="stat-card big-stat">
@@ -974,13 +1010,14 @@ function App() {
           </div>
 
           <div className="stat-card big-stat">
-            <span>Log Sayısı</span>
-            <strong>
-              {contents.reduce(
-                (sum, item) => sum + (item.watchLogs || []).length,
-                0
-              )}
-            </strong>
+            <span>Input Kaydı</span>
+            <div className="stat-body">
+              <strong>{inputRecordCounts.total}</strong>
+              <p className="stat-subtext">
+                {inputRecordCounts.manual} manuel log ·{" "}
+                {inputRecordCounts.episode} bölüm logu
+              </p>
+            </div>
           </div>
         </div>
 
@@ -1011,14 +1048,14 @@ function App() {
                 <h3>{month.label}</h3>
 
                 <div className="month-stats">
-                  <p>Toplam input: {(month.minutes / 60).toFixed(1)} saat</p>
+                  <p>Toplam input: {formatMinutesLabel(month.minutes)}</p>
                   <p>Toplam kelime: {month.words.toLocaleString("tr-TR")}</p>
                 </div>
 
                 <ul>
                   {Object.entries(month.titles).map(([title, minutes]) => (
                     <li key={title}>
-                      {title}: {(minutes / 60).toFixed(1)} saat
+                      {title}: {formatMinutesLabel(minutes)}
                     </li>
                   ))}
                 </ul>
@@ -1031,6 +1068,9 @@ function App() {
   };
 
   const renderContentCard = (item) => {
+    const isSeasonTracked =
+      item.mediaType === "tv" && item.seasons && item.seasons.length > 0;
+
     const totalEpisodes = Math.max(item.totalEpisodes, 0);
     const watchedEpisodes = Math.min(
       Math.max(item.watchedEpisodes, 0),
@@ -1083,28 +1123,85 @@ function App() {
             <div>
               <h3>{item.title}</h3>
               <p>
-                {item.type} · {getStatus(item)}
+                {item.type}
+                {item.releaseYear ? ` · ${item.releaseYear}` : ""}
               </p>
 
-              {(item.tmdbRating || item.estimatedLevel) && (
-                <div className="card-badges">
-                  {item.tmdbRating ? (
-                    <span className="card-badge">
-                      ⭐ {item.tmdbRating.toFixed(1)}
-                    </span>
-                  ) : null}
+              <div className="card-badges">
+                <span
+                  className={`card-badge ${
+                    (STATUS_META[getStatus(item)] || STATUS_META["İzleyecekler"])
+                      .badgeClassName
+                  }`}
+                >
+                  {(STATUS_META[getStatus(item)] || STATUS_META["İzleyecekler"])
+                    .label}
+                </span>
 
-                  {item.estimatedLevel ? (
-                    <span className="card-badge card-badge--level">
-                      {item.estimatedLevel}
-                    </span>
-                  ) : null}
-                </div>
-              )}
+                {item.tmdbRating ? (
+                  <span className="card-badge">
+                    ⭐ {item.tmdbRating.toFixed(1)}
+                  </span>
+                ) : null}
+
+                {item.estimatedLevel ? (
+                  <span className="card-badge card-badge--level">
+                    {item.estimatedLevel}
+                  </span>
+                ) : null}
+              </div>
 
               {item.overview && (
                 <p className="card-overview">{item.overview}</p>
               )}
+
+              <div className="card-status-picker">
+                {STATUS_OPTIONS.map((option) => {
+                  const isActive = getStatus(item) === option.value;
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`card-status-chip${
+                        isActive ? " card-status-chip--active" : ""
+                      }`}
+                      onClick={() => setContentStatus(item.id, option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="card-notes">
+                {item.notes ? (
+                  <>
+                    <p className="card-notes-preview">
+                      <span className="card-badge card-badge--notes">
+                        📝 Not var
+                      </span>{" "}
+                      {item.notes}
+                    </p>
+
+                    <button
+                      type="button"
+                      className="card-notes-btn"
+                      onClick={() => setNotesModalContentId(item.id)}
+                    >
+                      Notu Düzenle
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="card-notes-btn"
+                    onClick={() => setNotesModalContentId(item.id)}
+                  >
+                    📝 Not Ekle
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1181,6 +1278,11 @@ function App() {
 
                 return (
                   <>
+                    <p className="series-progress-text">
+                      Toplam ilerleme: {item.watchedEpisodes}/
+                      {item.totalEpisodes} bölüm
+                    </p>
+
                     <div className="progress-bar">
                       <div
                         className="progress-bar-fill"
@@ -1189,7 +1291,11 @@ function App() {
                     </div>
 
                     <p className="series-progress-text">
-                      Tamamlanma: %{completionPercent} · {nextEpisodeLabel}
+                      Tamamlanma: %{completionPercent}
+                    </p>
+
+                    <p className="series-progress-text series-progress-next">
+                      {nextEpisodeLabel}
                     </p>
 
                     <div className="season-chip-summary">
@@ -1225,8 +1331,8 @@ function App() {
               })()
             ) : (
               <p className="series-progress-text">
-                Sezon ve bölüm bilgilerini görmek için "Bölümleri Yönet"e
-                bas.
+                Bölüm bilgileri henüz yüklenmedi. Yüklemek için "Bölümleri
+                Yönet"e bas.
               </p>
             )}
 
@@ -1240,23 +1346,25 @@ function App() {
           </div>
         )}
 
-        <div className="card-actions">
-          <button
-            className="watch-btn"
-            onClick={() => watchOneEpisode(item.id)}
-            disabled={isFinished}
-          >
-            +1 bölüm izledim
-          </button>
+        {!isSeasonTracked && (
+          <div className="card-actions">
+            <button
+              className="watch-btn"
+              onClick={() => watchOneEpisode(item.id)}
+              disabled={isFinished}
+            >
+              +1 bölüm izledim
+            </button>
 
-          <button
-            className="complete-btn"
-            onClick={() => markAllWatched(item.id)}
-            disabled={isFinished}
-          >
-            Tümünü izledim
-          </button>
-        </div>
+            <button
+              className="complete-btn"
+              onClick={() => markAllWatched(item.id)}
+              disabled={isFinished}
+            >
+              Tümünü izledim
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -1324,6 +1432,12 @@ function App() {
           </div>
         </section>
 
+        <InputGoalCard
+          totalHours={totalInputHours}
+          targetHours={goalTargetHours}
+          onSelectTarget={setGoalTargetHours}
+        />
+
         <StatsPanel contents={contents} />
 
         <div id="new-content-anchor">
@@ -1332,10 +1446,11 @@ function App() {
             handleChange={handleChange}
             addContent={addContent}
             showSearch={showSearch}
-            setShowSearch={setShowSearch}
+            setShowSearch={handleShowSearchChange}
             fetchShowInfo={fetchShowInfo}
             isFetchingShow={isFetchingShow}
             markAllInForm={markAllInForm}
+            showSearchFeedback={showSearchFeedback}
           />
         </div>
 
@@ -1508,6 +1623,16 @@ function App() {
           onSyncSeasonEpisodes={syncSeasonEpisodes}
           onToggleEpisodeWatched={toggleEpisodeWatched}
           onToggleSeasonWatched={toggleSeasonWatched}
+        />
+      )}
+
+      {notesModalContent && (
+        <NotesModal
+          title={notesModalContent.title}
+          initialNotes={notesModalContent.notes || ""}
+          onSave={(notes) => updateContentNotes(notesModalContent.id, notes)}
+          onDelete={() => updateContentNotes(notesModalContent.id, "")}
+          onClose={() => setNotesModalContentId(null)}
         />
       )}
     </div>

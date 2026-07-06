@@ -164,6 +164,67 @@
   margin-bottom: var(--space-7);
 }
 
+.input-goal-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  margin-bottom: var(--space-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.input-goal-head h2 {
+  margin: 0 0 var(--space-2);
+  font-size: 22px;
+  text-align: left;
+}
+
+.input-goal-head p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 15px;
+}
+
+.input-goal-numbers {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.input-goal-milestones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.milestone-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.milestone-chip--done {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  border-color: transparent;
+}
+
+.milestone-chip--active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
 .summary-head h2 {
   font-size: 24px;
   text-align: left;
@@ -347,11 +408,26 @@
   gap: var(--space-3);
 }
 
+.api-search input {
+  font-size: 17px;
+}
+
+.api-search button {
+  font-weight: 700;
+  font-size: 15px;
+}
+
 .quick-fill-panel {
-  background: var(--color-surface);
+  background: radial-gradient(
+      circle at top left,
+      var(--color-primary-soft),
+      transparent 70%
+    ),
+    var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-5);
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
   margin-bottom: var(--space-6);
 }
 
@@ -369,6 +445,60 @@
   color: var(--color-text-muted);
   font-size: 14px;
   margin-bottom: var(--space-4);
+}
+
+.form-search-feedback {
+  margin: var(--space-3) 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.form-search-feedback--success {
+  color: var(--color-success);
+}
+
+.form-search-feedback--error {
+  color: var(--color-danger);
+}
+
+.advanced-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.advanced-fields-summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--color-text-muted);
+  padding: var(--space-2) 0;
+  list-style: none;
+}
+
+.advanced-fields-summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-fields-summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: var(--space-2);
+  transition: transform 0.15s ease;
+}
+
+.advanced-fields[open] > .advanced-fields-summary::before {
+  transform: rotate(90deg);
+}
+
+.advanced-fields-summary:hover {
+  color: var(--color-primary);
+}
+
+.advanced-fields-summary:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .content-form {
@@ -561,6 +691,45 @@ button:disabled {
   border-color: transparent;
 }
 
+.card-badge--status-watching {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  border-color: transparent;
+}
+
+.card-badge--status-completed {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  border-color: transparent;
+}
+
+.card-status-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.card-status-chip {
+  background: var(--color-surface-alt);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: var(--space-2) var(--space-4);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.card-status-chip:hover {
+  border-color: var(--color-primary);
+}
+
+.card-status-chip--active {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border-color: var(--color-primary);
+}
+
 .card-overview {
   margin: var(--space-2) 0 0;
   color: var(--color-text-muted);
@@ -570,6 +739,45 @@ button:disabled {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.card-notes {
+  margin-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.card-notes-preview {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-badge--notes {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  border-color: transparent;
+  font-size: 11px;
+}
+
+.card-notes-btn {
+  background: transparent;
+  color: var(--color-primary);
+  border: 1px dashed var(--color-primary);
+  padding: var(--space-2) var(--space-4);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.card-notes-btn:hover {
+  background: var(--color-primary-soft);
 }
 
 .delete-btn {
@@ -693,6 +901,11 @@ button:disabled {
   color: var(--color-text);
 }
 
+.series-progress-next {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
 .season-chip-summary {
   display: flex;
   flex-wrap: wrap;
@@ -717,15 +930,15 @@ button:disabled {
 
 .manage-episodes-btn {
   align-self: flex-start;
-  background: var(--color-surface-alt);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border: 1px solid var(--color-primary);
+  font-weight: 700;
 }
 
 .manage-episodes-btn:hover {
-  background: var(--color-primary);
-  color: var(--color-primary-contrast);
-  border-color: var(--color-primary);
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
 }
 
 .season-quick-actions {
@@ -797,6 +1010,12 @@ button:disabled {
 
 .big-stat {
   min-height: 140px;
+}
+
+.stat-subtext {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .charts-grid {
@@ -1089,7 +1308,8 @@ button:disabled {
   border-color: var(--color-primary);
 }
 
-.discover-tabs {
+.discover-tabs,
+.library-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
@@ -1305,6 +1525,56 @@ button:disabled {
   line-height: 1.5;
 }
 
+.notes-textarea {
+  width: 100%;
+  min-height: 140px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  padding: var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.notes-textarea:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--color-primary-soft);
+}
+
+.notes-modal-actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.notes-modal-actions-right {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.notes-cancel-btn {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.notes-cancel-btn:hover {
+  border-color: var(--color-primary);
+}
+
+.notes-delete-btn {
+  background: var(--color-danger);
+}
+
+.notes-delete-btn:hover {
+  background: var(--color-danger-hover);
+}
+
 .modal-seasons {
   margin-top: var(--space-2);
   padding-top: var(--space-4);
@@ -1361,6 +1631,11 @@ button:disabled {
 .episode-item--watched {
   background: var(--color-success-soft);
   border-color: var(--color-success);
+}
+
+.episode-item--watched .episode-name,
+.episode-item--watched .episode-overview {
+  opacity: 0.7;
 }
 
 .episode-item-head {
@@ -1527,6 +1802,16 @@ button:disabled {
   }
 
   .modal-status-row {
+    flex-direction: column;
+  }
+
+  .notes-modal-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .notes-modal-actions-right {
+    margin-left: 0;
     flex-direction: column;
   }
 

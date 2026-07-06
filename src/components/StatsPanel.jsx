@@ -1,3 +1,5 @@
+import { getTotalInputMinutes, getMinutesInRange } from "../utils/stats";
+
 function StatsPanel({ contents }) {
   const getStatus = (item) => {
     if (item.totalEpisodes > 0 && item.watchedEpisodes >= item.totalEpisodes) {
@@ -15,9 +17,7 @@ function StatsPanel({ contents }) {
     return item.status || "İzleyecekler";
   };
 
-  const totalMinutes = contents.reduce((sum, item) => {
-    return sum + item.watchedEpisodes * item.minutesPerEpisode;
-  }, 0);
+  const totalMinutes = getTotalInputMinutes(contents);
 
   const totalWords = contents.reduce((sum, item) => {
     return sum + item.watchedEpisodes * item.wordsPerEpisode;
@@ -31,21 +31,7 @@ function StatsPanel({ contents }) {
   const fourteenDaysAgo = new Date();
   fourteenDaysAgo.setDate(today.getDate() - 14);
 
-  const lastDaysMinutes = contents.reduce((total, item) => {
-    const logs = item.watchLogs || [];
-
-    const itemMinutes = logs.reduce((sum, log) => {
-      const logDate = new Date(log.date);
-
-      if (logDate >= fourteenDaysAgo && logDate <= today) {
-        return sum + log.minutes;
-      }
-
-      return sum;
-    }, 0);
-
-    return total + itemMinutes;
-  }, 0);
+  const lastDaysMinutes = getMinutesInRange(contents, fourteenDaysAgo, today);
 
   const watchLaterCount = contents.filter(
     (item) => getStatus(item) === "İzleyecekler"
