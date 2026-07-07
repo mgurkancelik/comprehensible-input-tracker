@@ -53,7 +53,7 @@ function NotesModal({ title, initialNotes, onSave, onDelete, onClose }) {
         </button>
 
         <div className="modal-body">
-          <h2 id="notes-modal-title">📝 Kişisel Not</h2>
+          <h2 id="notes-modal-title">Kişisel Not</h2>
           <p className="modal-meta">{title}</p>
 
           <label className="visually-hidden" htmlFor="notes-textarea">

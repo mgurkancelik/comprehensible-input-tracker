@@ -32,8 +32,8 @@ function InputGoalCard({ totalHours, targetHours, onSelectTarget }) {
 
   if (isGoalComplete) {
     goalText = nextSuggestedMilestone
-      ? `${selectedMilestone.hours} saatlik "${selectedMilestone.label}" hedefini tamamladın! 🎉 Sıradaki hedef olarak ${nextSuggestedMilestone.hours} saati ("${nextSuggestedMilestone.label}") deneyebilirsin.`
-      : `${selectedMilestone.hours} saatlik "${selectedMilestone.label}" hedefini de tamamladın! Muhteşem bir input birikimi oluşturdun. 🎉`;
+      ? `${selectedMilestone.hours} saatlik "${selectedMilestone.label}" hedefini tamamladın! Sıradaki hedef olarak ${nextSuggestedMilestone.hours} saati ("${nextSuggestedMilestone.label}") deneyebilirsin.`
+      : `${selectedMilestone.hours} saatlik "${selectedMilestone.label}" hedefini de tamamladın! Muhteşem bir input birikimi oluşturdun.`;
   } else {
     goalText = `${selectedMilestone.hours} saatlik "${
       selectedMilestone.label
@@ -43,7 +43,7 @@ function InputGoalCard({ totalHours, targetHours, onSelectTarget }) {
   return (
     <section className="input-goal-card">
       <div className="input-goal-head">
-        <h2>🎯 Input Hedefi</h2>
+        <h2>Input Hedefi</h2>
         <p>{goalText}</p>
       </div>
 

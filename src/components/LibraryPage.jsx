@@ -1,9 +1,9 @@
 import { useState } from "react";
 
 const STATUS_TABS = [
-  { value: "İzleyecekler", label: "İzleyeceğim", icon: "📌" },
-  { value: "İzleniyor", label: "İzliyorum", icon: "▶️" },
-  { value: "İzlediklerim", label: "İzledim", icon: "✅" },
+  { value: "İzleyecekler", label: "İzleyeceğim" },
+  { value: "İzleniyor", label: "İzliyorum" },
+  { value: "İzlediklerim", label: "İzledim" },
 ];
 
 const EMPTY_MESSAGES = {
@@ -36,7 +36,7 @@ function LibraryPage({
   return (
     <section className="content-list">
       <div className="page-title">
-        <h2>📚 Kütüphanem</h2>
+        <h2>Kütüphanem</h2>
         <p>
           İzleyecekler, şu an izlediklerin ve tamamladığın tüm içerikler
           burada.
@@ -81,7 +81,7 @@ function LibraryPage({
             aria-current={activeTab === tab.value ? "page" : undefined}
             onClick={() => setActiveTab(tab.value)}
           >
-            {tab.icon} {tab.label} ({listByStatus[tab.value].length})
+            {tab.label} ({listByStatus[tab.value].length})
           </button>
         ))}
       </div>

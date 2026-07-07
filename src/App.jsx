@@ -841,24 +841,16 @@ function App() {
     (item) => getStatus(item) === "İzleniyor"
   ).length;
 
-  const activeWatchLaterCount = contents.filter(
-    (item) => getStatus(item) === "İzleyecekler"
-  ).length;
-
   const headerStatusMessage = (() => {
     if (activeWatchingCount === 0) {
       return "İlk içeriğini ekleyerek input takibine başlayabilirsin.";
     }
 
-    if (totalInputHours > 0 && totalInputHours < 100) {
-      return "İlk 100 saat hedefin için iyi bir başlangıç yaptın.";
+    if (totalInputHours >= goalTargetHours) {
+      return "Seçili input hedefine ulaştın, yeni bir hedef seçebilirsin.";
     }
 
-    if (totalInputHours >= 100 && totalInputHours < 250) {
-      return "Düzenli input birikimi oluşuyor.";
-    }
-
-    return "Input yolculuğun devam ediyor.";
+    return "Seçili hedefine doğru düzenli bir ilerleme kaydediyorsun.";
   })();
 
   const filteredContents = contents.filter((item) => {
@@ -1217,7 +1209,7 @@ function App() {
           <div
             className="circle-progress"
             style={{
-              background: `conic-gradient(var(--color-primary) ${progress}%, var(--color-surface-alt) 0)`,
+              background: `conic-gradient(var(--color-progress) ${progress}%, var(--color-surface-alt) 0)`,
             }}
           >
             <div>{progress}%</div>
@@ -1341,7 +1333,7 @@ function App() {
               className="manage-episodes-btn"
               onClick={() => setManagingContentId(item.id)}
             >
-              🎬 Bölümleri Yönet
+              Bölümleri Yönet
             </button>
           </div>
         )}
@@ -1380,65 +1372,46 @@ function App() {
 
     return (
       <>
-        <section className="summary-card">
-          <div className="summary-head">
-            <h2>🧭 Learning Snapshot</h2>
-            <p>{snapshotNarrative}</p>
-          </div>
-
-          <div className="summary-metrics">
-            <div className="summary-metric">
-              <span>Toplam Input</span>
-              <strong>{heroHours} saat</strong>
-            </div>
-
-            <div className="summary-metric">
-              <span>Son 14 Gün</span>
-              <strong>{last14DaysHours} saat</strong>
-            </div>
-
-            <div className="summary-metric">
-              <span>İzlenen Bölüm</span>
-              <strong>{totalWatchedEpisodes}</strong>
-            </div>
-
-            <div className="summary-metric">
-              <span>Aktif İçerik</span>
-              <strong>{activeWatchingCount}</strong>
-            </div>
-
-            <div className="summary-metric">
-              <span>İzleyecekler</span>
-              <strong>{activeWatchLaterCount}</strong>
-            </div>
-          </div>
-
-          <div className="quick-actions">
-            <p className="quick-actions-label">Hızlı Aksiyonlar</p>
-
-            <div className="quick-actions-row">
-              <a className="quick-action-hint" href="#new-content-anchor">
-                ➕ Yeni içerik ekle
-              </a>
-
-              <button type="button" onClick={() => setActivePage("discover")}>
-                🔎 Keşfet'e git
-              </button>
-
-              <button type="button" onClick={() => setActivePage("tracking")}>
-                📈 Takip çizelgesini gör
-              </button>
-            </div>
-          </div>
-        </section>
-
         <InputGoalCard
           totalHours={totalInputHours}
           targetHours={goalTargetHours}
           onSelectTarget={setGoalTargetHours}
         />
 
+        <section className="summary-card">
+          <div className="summary-head">
+            <h2>Öğrenme Özeti</h2>
+            <p>{snapshotNarrative}</p>
+          </div>
+        </section>
+
         <StatsPanel contents={contents} />
+
+        <section className="quick-actions-panel">
+          <p className="quick-actions-label">Hızlı Aksiyonlar</p>
+
+          <div className="quick-actions-row">
+            <a className="quick-action-primary" href="#new-content-anchor">
+              Yeni içerik ekle
+            </a>
+
+            <button
+              type="button"
+              className="quick-action-secondary"
+              onClick={() => setActivePage("discover")}
+            >
+              Keşfet'e git
+            </button>
+
+            <button
+              type="button"
+              className="quick-action-outline"
+              onClick={() => setActivePage("tracking")}
+            >
+              Takip çizelgesini gör
+            </button>
+          </div>
+        </section>
 
         <div id="new-content-anchor">
           <ContentForm
@@ -1453,7 +1426,6 @@ function App() {
             showSearchFeedback={showSearchFeedback}
           />
         </div>
-
       </>
     );
   };
@@ -1489,7 +1461,7 @@ function App() {
           aria-current={activePage === "discover" ? "page" : undefined}
           onClick={() => setActivePage("discover")}
         >
-          🔎 Keşfet
+          Keşfet
         </button>
 
         <button
@@ -1497,7 +1469,7 @@ function App() {
           aria-current={activePage === "library" ? "page" : undefined}
           onClick={() => setActivePage("library")}
         >
-          📚 Kütüphanem
+          Kütüphanem
         </button>
 
         <button
@@ -1534,17 +1506,13 @@ function App() {
 
       <main className="app">
         <header className="header">
-          <span className="header-kicker">📚 Comprehensible Input Takibi</span>
+          <span className="header-kicker">Comprehensible Input Takibi</span>
           <h1>Comprehensible Input Tracker</h1>
           <p>
             İngilizce input süreni, bölüm ilerlemeni, hedeflerini ve kelime
             maruziyetini takip et.
           </p>
           <p className="header-status">{headerStatusMessage}</p>
-          <div className="header-highlight">
-            <span>⏱️ Toplam input:</span>
-            <strong>{heroHours} saat</strong>
-          </div>
         </header>
 
         {activePage === "dashboard" && renderDashboardPage()}

@@ -239,7 +239,7 @@ function DiscoverPage({
   return (
     <section className="form-section discover-page">
       <div className="page-title">
-        <h2>🔎 Keşfet</h2>
+        <h2>Keşfet</h2>
         <p>
           Popüler ve en çok beğenilen film/dizileri keşfet, arayarak bul, tek
           tıkla İzleyecekler listene ekle.
@@ -295,6 +295,7 @@ function DiscoverPage({
                       ? "filter-chip filter-chip--active"
                       : "filter-chip"
                   }
+                  aria-pressed={typeFilter === option}
                   onClick={() => setTypeFilter(option)}
                 >
                   {option}
@@ -316,6 +317,7 @@ function DiscoverPage({
                     ? "filter-chip filter-chip--active"
                     : "filter-chip"
                 }
+                aria-pressed={levelFilter === option}
                 onClick={() => setLevelFilter(option)}
               >
                 {option}
@@ -336,6 +338,7 @@ function DiscoverPage({
                     ? "filter-chip filter-chip--active"
                     : "filter-chip"
                 }
+                aria-pressed={ratingFilter === option}
                 onClick={() => setRatingFilter(option)}
               >
                 {option}

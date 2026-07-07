@@ -12,14 +12,14 @@ function ContentForm({
   return (
     <section className="form-section">
       <div className="page-title">
-        <h2>🚀 Hızlı İçerik Ekle</h2>
+        <h2>Hızlı İçerik Ekle</h2>
         <p>
           Dizi adını yaz, bilgileri otomatik çek, sonra input takibine ekle.
         </p>
       </div>
 
       <div className="quick-fill-panel">
-        <p className="quick-fill-label">🔍 Hızlı Doldur</p>
+        <p className="quick-fill-label">Hızlı Doldur</p>
         <p className="form-hint">
           Dizi adını yazıp bilgileri otomatik çekebilir, ardından formu
           tamamlayabilirsin.
@@ -57,7 +57,7 @@ function ContentForm({
 
       <form onSubmit={addContent} className="content-form">
         <fieldset className="form-fieldset">
-          <legend className="fieldset-legend">📄 İçerik Bilgisi</legend>
+          <legend className="fieldset-legend">İçerik Bilgisi</legend>
 
           <div className="field-grid">
             <label className="field" htmlFor="title">
@@ -96,11 +96,11 @@ function ContentForm({
 
         <details className="advanced-fields" open>
           <summary className="advanced-fields-summary">
-            ⚙️ Detayları Düzenle (tarih, bölüm, kelime bilgisi)
+            Detayları Düzenle (tarih, bölüm, kelime bilgisi)
           </summary>
 
           <fieldset className="form-fieldset">
-            <legend className="fieldset-legend">📅 Tarih Bilgisi</legend>
+            <legend className="fieldset-legend">Tarih Bilgisi</legend>
 
             <div className="field-grid">
               <label className="field" htmlFor="startDate">
@@ -140,7 +140,7 @@ function ContentForm({
 
           <fieldset className="form-fieldset">
             <legend className="fieldset-legend">
-              🎞️ Bölüm ve Kelime Bilgisi
+              Bölüm ve Kelime Bilgisi
             </legend>
 
             <div className="field-grid">

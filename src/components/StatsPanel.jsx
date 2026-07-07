@@ -48,57 +48,41 @@ function StatsPanel({ contents }) {
   const stats = [
     {
       key: "total",
-      icon: "⏱️",
-      tone: "primary",
       label: "Toplam Input",
       value: `${(totalMinutes / 60).toFixed(1)} saat`,
     },
     {
       key: "last14",
-      icon: "📆",
-      tone: "primary",
       label: "Son 14 Gün",
       value: `${(lastDaysMinutes / 60).toFixed(1)} saat`,
     },
     {
       key: "words",
-      icon: "🧠",
-      tone: "success",
       label: "Toplam Kelime",
       value: totalWords.toLocaleString("tr-TR"),
     },
     {
       key: "episodes",
-      icon: "▶️",
-      tone: "primary",
       label: "İzlenen Bölüm",
       value: totalEpisodes,
     },
     {
       key: "watchLater",
-      icon: "📌",
-      tone: "neutral",
       label: "İzleyecekler",
       value: watchLaterCount,
     },
     {
       key: "watching",
-      icon: "🎬",
-      tone: "primary",
       label: "İzleniyor",
       value: watchingCount,
     },
     {
       key: "completed",
-      icon: "✅",
-      tone: "success",
       label: "İzlediklerim",
       value: completedCount,
     },
     {
       key: "count",
-      icon: "📚",
-      tone: "neutral",
       label: "İçerik Sayısı",
       value: contents.length,
     },
@@ -107,15 +91,9 @@ function StatsPanel({ contents }) {
   return (
     <section className="stats" aria-label="İstatistikler">
       {stats.map((stat) => (
-        <div className={`stat-card stat-card--${stat.tone}`} key={stat.key}>
-          <div className="stat-icon" aria-hidden="true">
-            {stat.icon}
-          </div>
-
-          <div className="stat-body">
-            <span>{stat.label}</span>
-            <strong>{stat.value}</strong>
-          </div>
+        <div className="stat-card" key={stat.key}>
+          <span>{stat.label}</span>
+          <strong>{stat.value}</strong>
         </div>
       ))}
     </section>

@@ -25,12 +25,14 @@
   --color-success: #16a34a;
   --color-success-hover: #15803d;
 
-  --color-focus-ring: #c084fc;
+  --color-progress: #38bdf8;
+
+  --color-focus-ring: #a78bfa;
   --color-primary-soft: rgba(139, 92, 246, 0.18);
   --color-success-soft: rgba(22, 163, 74, 0.18);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.45), 0 4px 6px -2px rgba(0, 0, 0, 0.25);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
+  --shadow-md: 0 4px 10px -4px rgba(0, 0, 0, 0.35);
 
   --space-1: 4px;
   --space-2: 8px;
@@ -41,11 +43,18 @@
   --space-7: 32px;
   --space-8: 40px;
 
-  --radius-sm: 14px;
-  --radius-md: 20px;
-  --radius-lg: 26px;
-  --radius-xl: 30px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
   --radius-pill: 999px;
+
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-md: 15px;
+  --font-size-lg: 17px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 26px;
+  --font-size-hero: clamp(30px, 4vw, 40px);
 
   --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
 
@@ -79,12 +88,14 @@
   --color-success: #15803d;
   --color-success-hover: #166534;
 
+  --color-progress: #0284c7;
+
   --color-focus-ring: #7c3aed;
   --color-primary-soft: rgba(124, 58, 237, 0.12);
   --color-success-soft: rgba(21, 128, 61, 0.12);
 
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
-  --shadow-md: 0 10px 15px -3px rgba(15, 23, 42, 0.1), 0 4px 6px -2px rgba(15, 23, 42, 0.06);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 10px -4px rgba(15, 23, 42, 0.1);
 }
 
 body {
@@ -117,7 +128,7 @@ select:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px var(--color-primary-soft);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
 
 /* Görsel olarak gizli ama ekran okuyucular için erişilebilir label'lar */

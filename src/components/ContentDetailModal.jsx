@@ -311,6 +311,9 @@ function ContentDetailModal({
                             ? "filter-chip filter-chip--active"
                             : "filter-chip"
                         }
+                        aria-pressed={
+                          selectedSeasonNumber === season.season_number
+                        }
                         onClick={() =>
                           setSelectedSeasonNumber(season.season_number)
                         }
@@ -465,6 +468,7 @@ function ContentDetailModal({
                     className={`modal-status-btn${
                       isActive ? " modal-status-btn--active" : ""
                     }`}
+                    aria-pressed={isActive}
                     onClick={() => onAdd(option.value)}
                   >
                     {isActive ? `✓ ${option.label}` : option.label}
