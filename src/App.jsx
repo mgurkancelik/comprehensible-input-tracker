@@ -829,29 +829,7 @@ function App() {
 
   const totalWatchedMinutes = getTotalInputMinutes(contents);
 
-  const heroHours = (totalWatchedMinutes / 60).toFixed(1);
   const totalInputHours = totalWatchedMinutes / 60;
-
-  const totalWatchedEpisodes = contents.reduce(
-    (sum, item) => sum + item.watchedEpisodes,
-    0
-  );
-
-  const activeWatchingCount = contents.filter(
-    (item) => getStatus(item) === "İzleniyor"
-  ).length;
-
-  const headerStatusMessage = (() => {
-    if (activeWatchingCount === 0) {
-      return "İlk içeriğini ekleyerek input takibine başlayabilirsin.";
-    }
-
-    if (totalInputHours >= goalTargetHours) {
-      return "Seçili input hedefine ulaştın, yeni bir hedef seçebilirsin.";
-    }
-
-    return "Seçili hedefine doğru düzenli bir ilerleme kaydediyorsun.";
-  })();
 
   const filteredContents = contents.filter((item) => {
     const matchesSearch = item.title
@@ -1363,12 +1341,11 @@ function App() {
 
   const renderDashboardPage = () => {
     const last14DaysMinutes = getLast14DaysMinutes();
-    const last14DaysHours = (last14DaysMinutes / 60).toFixed(1);
     const hasRecentMomentum = last14DaysMinutes > 0;
 
     const snapshotNarrative = hasRecentMomentum
-      ? `Bugüne kadar ${heroHours} saat input aldın ve ${totalWatchedEpisodes} bölüm tamamladın. Son 14 günde ${last14DaysHours} saatlik güzel bir ilerleme kaydettin.`
-      : `Bugüne kadar ${heroHours} saat input aldın ve ${totalWatchedEpisodes} bölüm tamamladın. Son 14 günde henüz input eklemedin, küçük bir adım atmaya ne dersin?`;
+      ? "Son 14 günde güzel bir ilerleme kaydettin, özet metriklerine aşağıdan göz atabilirsin."
+      : "Son 14 günde henüz input eklemedin, küçük bir adım atmaya ne dersin?";
 
     return (
       <>
@@ -1506,13 +1483,8 @@ function App() {
 
       <main className="app">
         <header className="header">
-          <span className="header-kicker">Comprehensible Input Takibi</span>
           <h1>Comprehensible Input Tracker</h1>
-          <p>
-            İngilizce input süreni, bölüm ilerlemeni, hedeflerini ve kelime
-            maruziyetini takip et.
-          </p>
-          <p className="header-status">{headerStatusMessage}</p>
+          <p>İngilizce içerik izleme sürecini ve ilerlemeni tek yerden takip et.</p>
         </header>
 
         {activePage === "dashboard" && renderDashboardPage()}

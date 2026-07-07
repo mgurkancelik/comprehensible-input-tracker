@@ -59,7 +59,7 @@ function ContentForm({
         <fieldset className="form-fieldset">
           <legend className="fieldset-legend">İçerik Bilgisi</legend>
 
-          <div className="field-grid">
+          <div className="field-grid field-grid--primary">
             <label className="field" htmlFor="title">
               <span className="field-label">İçerik adı</span>
               <input
@@ -102,7 +102,7 @@ function ContentForm({
           <fieldset className="form-fieldset">
             <legend className="fieldset-legend">Tarih Bilgisi</legend>
 
-            <div className="field-grid">
+            <div className="field-grid field-grid--dates">
               <label className="field" htmlFor="startDate">
                 <span className="field-label">Başlangıç tarihi</span>
                 <input
