@@ -58,8 +58,8 @@
 }
 
 .top-nav .nav-active {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: var(--color-selected-bg);
+  color: var(--color-selected-text);
   border-color: transparent;
   font-weight: 700;
   box-shadow: inset 0 -2px 0 var(--color-primary);
@@ -183,8 +183,8 @@
 }
 
 .milestone-chip--active {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: var(--color-selected-bg);
+  color: var(--color-selected-text);
   border-color: var(--color-primary);
 }
 
@@ -515,7 +515,12 @@
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
+  display: flex;
+  align-items: center;
+  padding-top: 0;
+  padding-bottom: 0;
   padding-right: 44px;
+  line-height: normal;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1L6 6L11 1' stroke='%2394a3b8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 16px center;
@@ -723,12 +728,12 @@ button:disabled {
 }
 
 .card-status-chip:hover {
-  border-color: var(--color-primary);
+  border-color: var(--color-text-muted);
 }
 
 .card-status-chip--active {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: var(--color-selected-bg);
+  color: var(--color-selected-text);
   border-color: var(--color-primary);
 }
 
@@ -770,6 +775,9 @@ button:disabled {
 }
 
 .card-notes-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
   background: transparent;
   color: var(--color-primary);
   border: 1px dashed var(--color-primary);
@@ -956,6 +964,9 @@ button:disabled {
 }
 
 .season-quick-action-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
   background: var(--color-surface-alt);
   color: var(--color-text);
   border: 1px solid var(--color-border);
@@ -1189,8 +1200,8 @@ button:disabled {
   position: absolute;
   bottom: var(--space-3);
   right: var(--space-3);
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border-radius: 50%;
   background: var(--color-primary);
@@ -1309,12 +1320,12 @@ button:disabled {
 }
 
 .filter-chip:hover {
-  border-color: var(--color-primary);
+  border-color: var(--color-text-muted);
 }
 
 .filter-chip--active {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: var(--color-selected-bg);
+  color: var(--color-selected-text);
   border-color: var(--color-primary);
   font-weight: 700;
 }
@@ -1342,13 +1353,13 @@ button:disabled {
 .library-tabs button:hover {
   background: var(--color-surface);
   color: var(--color-heading);
-  border-color: var(--color-primary);
+  border-color: var(--color-text-muted);
 }
 
 .discover-tabs .nav-active,
 .library-tabs .nav-active {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: var(--color-selected-bg);
+  color: var(--color-selected-text);
   border-color: var(--color-primary);
   font-weight: 700;
 }
@@ -1443,8 +1454,8 @@ button:disabled {
   position: absolute;
   top: var(--space-4);
   right: var(--space-4);
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border-radius: 50%;
   background: var(--color-surface-alt);
@@ -1750,12 +1761,12 @@ button:disabled {
 }
 
 .modal-status-btn:hover {
-  border-color: var(--color-primary);
+  border-color: var(--color-text-muted);
 }
 
 .modal-status-btn--active {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: var(--color-selected-bg);
+  color: var(--color-selected-text);
   border-color: var(--color-primary);
   font-weight: 700;
 }

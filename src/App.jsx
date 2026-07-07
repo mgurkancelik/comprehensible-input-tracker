@@ -1149,7 +1149,7 @@ function App() {
                   <>
                     <p className="card-notes-preview">
                       <span className="card-badge card-badge--notes">
-                        📝 Not var
+                        Not var
                       </span>{" "}
                       {item.notes}
                     </p>
@@ -1168,7 +1168,7 @@ function App() {
                     className="card-notes-btn"
                     onClick={() => setNotesModalContentId(item.id)}
                   >
-                    📝 Not Ekle
+                    Not Ekle
                   </button>
                 )}
               </div>
