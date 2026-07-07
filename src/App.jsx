@@ -1430,7 +1430,7 @@ function App() {
           aria-current={activePage === "dashboard" ? "page" : undefined}
           onClick={() => setActivePage("dashboard")}
         >
-          Dashboard
+          Ana Sayfa
         </button>
 
         <button
