@@ -565,15 +565,19 @@
 .field-label-action {
   background: transparent;
   border: none;
-  padding: 0;
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  margin: -2px -6px;
   min-height: auto;
   color: var(--md-sys-color-primary);
   font-size: var(--font-size-xs);
   font-weight: 600;
+  transition: background-color 0.15s ease;
 }
 
 .field-label-action:hover {
-  color: color-mix(in srgb, var(--md-sys-color-primary) 80%, var(--md-sys-color-on-surface) 20%);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+  color: var(--md-sys-color-primary);
 }
 
 .content-form input,
