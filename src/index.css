@@ -32,6 +32,7 @@
   --md-sys-color-surface-container-low: #0f172a;
   --md-sys-color-surface-container: #131b2c;
   --md-sys-color-surface-container-high: #171f33;
+  --md-sys-color-surface-container-highest: #202a45;
   --md-sys-color-on-surface: #cbd5e1;
   --md-sys-color-on-surface-variant: #94a3b8;
 
@@ -70,6 +71,16 @@
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
   --shadow-md: 0 4px 10px -4px rgba(0, 0, 0, 0.35);
+
+  /* ---- M3 elevation: yükseklik hissi öncelikle surface tonuyla, shadow yalnızca
+     destekleyici katman olarak kullanılır. Level0/1 gölgesiz; Level2 çok hafif;
+     Level3+ (modal/dialog) diğerlerinden belirgin ama abartısız. ---- */
+  --md-sys-elevation-level0: none;
+  --md-sys-elevation-level1: none;
+  --md-sys-elevation-level2: var(--shadow-sm);
+  --md-sys-elevation-level3: var(--shadow-sm);
+  --md-sys-elevation-level4: var(--shadow-md);
+  --md-sys-elevation-level5: var(--shadow-md);
 
   --space-1: 4px;
   --space-2: 8px;
@@ -131,6 +142,7 @@
   --md-sys-color-surface-container-low: #f2f4f8;
   --md-sys-color-surface-container: #f8fafc;
   --md-sys-color-surface-container-high: #ffffff;
+  --md-sys-color-surface-container-highest: #ffffff;
   --md-sys-color-on-surface: #3f4552;
   --md-sys-color-on-surface-variant: #5c6678;
 
