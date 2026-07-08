@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const connectDB = require("./config/db");
+const contentsRoutes = require("./routes/contents");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -16,6 +17,8 @@ connectDB();
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, message: "Server is running" });
 });
+
+app.use("/api/contents", contentsRoutes);
 
 app.get("/api/db-test", (req, res) => {
   const readyState = mongoose.connection.readyState;
