@@ -43,7 +43,7 @@ function App() {
   const [activePage, setActivePage] = useState("dashboard");
 
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem(THEME_STORAGE_KEY) || "dark";
+    return localStorage.getItem(THEME_STORAGE_KEY) || "light";
   });
 
   useEffect(() => {
