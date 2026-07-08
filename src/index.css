@@ -5,34 +5,66 @@
 :root {
   color-scheme: dark;
 
+  /* ---- Material Design 3 system color roles: koyu tema (varsayılan) ---- */
+  --md-sys-color-primary: #8b5cf6;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: rgba(139, 92, 246, 0.18);
+  --md-sys-color-on-primary-container: #8b5cf6;
+
+  --md-sys-color-secondary: #b7c0d8;
+  --md-sys-color-on-secondary: #23293a;
+  --md-sys-color-secondary-container: #384157;
+  --md-sys-color-on-secondary-container: #dbe2f0;
+
+  --md-sys-color-tertiary: #38bdf8;
+  --md-sys-color-on-tertiary: #052430;
+  --md-sys-color-tertiary-container: rgba(56, 189, 248, 0.16);
+  --md-sys-color-on-tertiary-container: #38bdf8;
+
+  --md-sys-color-error: #ef4444;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-error-container: rgba(239, 68, 68, 0.16);
+  --md-sys-color-on-error-container: #ef4444;
+
+  --md-sys-color-surface: #0b1020;
+  --md-sys-color-surface-container-low: #0f172a;
+  --md-sys-color-surface-container: #131b2c;
+  --md-sys-color-surface-container-high: #171f33;
+  --md-sys-color-on-surface: #cbd5e1;
+  --md-sys-color-on-surface-variant: #94a3b8;
+
+  --md-sys-color-outline: #334155;
+  --md-sys-color-outline-variant: #1e2738;
+
   /* ---- Design tokens: koyu tema (varsayılan) ---- */
-  --color-bg: #0b1020;
-  --color-surface: #171f33;
-  --color-surface-alt: #0f172a;
+  /* Mevcut proje değişkenleri; MD3 rollerine bağlanır (bkz. yukarısı) */
+  --color-bg: var(--md-sys-color-surface);
+  --color-surface: var(--md-sys-color-surface-container-high);
+  --color-surface-alt: var(--md-sys-color-surface-container-low);
   --color-nav-bg: rgba(15, 23, 42, 0.9);
-  --color-border: #334155;
-  --color-text: #cbd5e1;
-  --color-text-muted: #94a3b8;
+  --color-border: var(--md-sys-color-outline);
+  --color-text: var(--md-sys-color-on-surface);
+  --color-text-muted: var(--md-sys-color-on-surface-variant);
   --color-heading: #f8fafc;
 
-  --color-primary: #8b5cf6;
+  --color-primary: var(--md-sys-color-primary);
   --color-primary-hover: #7c3aed;
-  --color-primary-contrast: #ffffff;
+  --color-primary-contrast: var(--md-sys-color-on-primary);
 
-  --color-danger: #ef4444;
+  --color-danger: var(--md-sys-color-error);
   --color-danger-hover: #dc2626;
 
   --color-success: #16a34a;
   --color-success-hover: #15803d;
 
-  --color-progress: #38bdf8;
+  --color-progress: var(--md-sys-color-tertiary);
 
   --color-focus-ring: #a78bfa;
-  --color-primary-soft: rgba(139, 92, 246, 0.18);
+  --color-primary-soft: var(--md-sys-color-primary-container);
   --color-success-soft: rgba(22, 163, 74, 0.18);
 
-  --color-selected-bg: var(--color-primary-soft);
-  --color-selected-text: var(--color-primary);
+  --color-selected-bg: var(--md-sys-color-primary-container);
+  --color-selected-text: var(--md-sys-color-on-primary-container);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
   --shadow-md: 0 4px 10px -4px rgba(0, 0, 0, 0.35);
@@ -72,33 +104,65 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  --color-bg: #f3f4f7;
-  --color-surface: #ffffff;
-  --color-surface-alt: #eef1f6;
+  /* ---- Material Design 3 system color roles: açık tema ---- */
+  --md-sys-color-primary: #7c3aed;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: rgba(124, 58, 237, 0.12);
+  --md-sys-color-on-primary-container: #7c3aed;
+
+  --md-sys-color-secondary: #5b6577;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #dfe3ec;
+  --md-sys-color-on-secondary-container: #333c4d;
+
+  --md-sys-color-tertiary: #0284c7;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: rgba(2, 132, 199, 0.12);
+  --md-sys-color-on-tertiary-container: #0284c7;
+
+  --md-sys-color-error: #dc2626;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-error-container: rgba(220, 38, 38, 0.12);
+  --md-sys-color-on-error-container: #dc2626;
+
+  --md-sys-color-surface: #f3f4f7;
+  --md-sys-color-surface-container-low: #eef1f6;
+  --md-sys-color-surface-container: #f7f9fb;
+  --md-sys-color-surface-container-high: #ffffff;
+  --md-sys-color-on-surface: #3f4552;
+  --md-sys-color-on-surface-variant: #667085;
+
+  --md-sys-color-outline: #c9cfda;
+  --md-sys-color-outline-variant: #e2e5ec;
+
+  /* Mevcut proje değişkenleri; MD3 rollerine bağlanır (bkz. yukarısı) */
+  --color-bg: var(--md-sys-color-surface);
+  --color-surface: var(--md-sys-color-surface-container-high);
+  --color-surface-alt: var(--md-sys-color-surface-container-low);
   --color-nav-bg: rgba(255, 255, 255, 0.85);
-  --color-border: #c9cfda;
-  --color-text: #3f4552;
-  --color-text-muted: #667085;
+  --color-border: var(--md-sys-color-outline);
+  --color-text: var(--md-sys-color-on-surface);
+  --color-text-muted: var(--md-sys-color-on-surface-variant);
   --color-heading: #14161c;
 
-  --color-primary: #7c3aed;
+  --color-primary: var(--md-sys-color-primary);
   --color-primary-hover: #6d28d9;
-  --color-primary-contrast: #ffffff;
+  --color-primary-contrast: var(--md-sys-color-on-primary);
 
-  --color-danger: #dc2626;
+  --color-danger: var(--md-sys-color-error);
   --color-danger-hover: #b91c1c;
 
   --color-success: #15803d;
   --color-success-hover: #166534;
 
-  --color-progress: #0284c7;
+  --color-progress: var(--md-sys-color-tertiary);
 
   --color-focus-ring: #7c3aed;
-  --color-primary-soft: rgba(124, 58, 237, 0.12);
+  --color-primary-soft: var(--md-sys-color-primary-container);
   --color-success-soft: rgba(21, 128, 61, 0.12);
 
-  --color-selected-bg: var(--color-primary-soft);
-  --color-selected-text: var(--color-primary);
+  --color-selected-bg: var(--md-sys-color-primary-container);
+  --color-selected-text: var(--md-sys-color-on-primary-container);
 
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
   --shadow-md: 0 4px 10px -4px rgba(15, 23, 42, 0.1);

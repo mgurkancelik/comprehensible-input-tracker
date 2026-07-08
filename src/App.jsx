@@ -1473,11 +1473,9 @@ function App() {
           aria-label={
             theme === "dark" ? "Açık temaya geç" : "Koyu temaya geç"
           }
+          title={theme === "dark" ? "Açık temaya geç" : "Koyu temaya geç"}
         >
           <span aria-hidden="true">{theme === "dark" ? "☀️" : "🌙"}</span>
-          <span className="theme-toggle-label">
-            {theme === "dark" ? "Açık Tema" : "Koyu Tema"}
-          </span>
         </button>
       </nav>
 

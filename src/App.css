@@ -7,6 +7,7 @@
   justify-content: center;
   gap: var(--space-4);
   align-items: center;
+  padding: 0 var(--space-6);
   background: var(--color-nav-bg);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--color-border);
@@ -38,52 +39,51 @@
   background: linear-gradient(to left, var(--color-nav-bg), transparent);
 }
 
-.top-nav button {
-  background: var(--color-surface-alt);
-  color: var(--color-text-muted);
-  border: 1px solid var(--color-border);
+.top-nav button:not(.theme-toggle) {
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  border: none;
   font-size: var(--font-size-md);
   cursor: pointer;
-  padding: var(--space-3) var(--space-5);
-  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease,
-    box-shadow 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.top-nav button:hover {
-  background: var(--color-surface);
-  color: var(--color-heading);
-  border-color: var(--color-text-muted);
+.top-nav button:not(.theme-toggle):hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+  color: var(--md-sys-color-on-surface);
 }
 
 .top-nav .nav-active {
-  background: var(--color-selected-bg);
-  color: var(--color-selected-text);
-  border-color: transparent;
+  background: transparent;
+  color: var(--md-sys-color-primary);
   font-weight: 700;
-  box-shadow: inset 0 -2px 0 var(--color-primary);
+  box-shadow: inset 0 -2px 0 var(--md-sys-color-primary);
 }
 
 .theme-toggle {
   margin-left: auto;
-  background: transparent;
-  color: var(--color-text);
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  justify-content: center;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  border: none;
+  border-radius: 50%;
+  font-size: 18px;
+  line-height: 1;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .theme-toggle:hover {
-  background: var(--color-surface-alt);
-  color: var(--color-text);
-  border-color: var(--color-primary);
-}
-
-@media (max-width: 700px) {
-  .theme-toggle-label {
-    display: none;
-  }
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+  color: var(--md-sys-color-on-surface);
 }
 
 .app {
@@ -363,6 +363,17 @@
   border-radius: var(--radius-pill);
   font-weight: 700;
   font-size: var(--font-size-md);
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  border: 1px solid transparent;
+}
+
+.api-search button:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-secondary-container) 88%,
+    var(--md-sys-color-on-secondary-container) 12%
+  );
 }
 
 .quick-fill-panel {
@@ -490,6 +501,21 @@
   justify-content: flex-end;
 }
 
+.form-submit-row button {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border: 1px solid transparent;
+  font-weight: 700;
+}
+
+.form-submit-row button:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 88%,
+    var(--md-sys-color-on-primary) 12%
+  );
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -610,6 +636,16 @@ button:disabled {
 
 .inline-field button {
   white-space: nowrap;
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  border: 1px solid var(--md-sys-color-outline);
+  font-weight: 600;
+}
+
+.inline-field button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+  color: var(--md-sys-color-primary);
+  border-color: var(--md-sys-color-primary);
 }
 
 .empty-text {
@@ -1793,7 +1829,7 @@ button:disabled {
     gap: var(--space-2);
     overflow-x: auto;
     justify-content: flex-start;
-    padding: 0 var(--space-3);
+    padding: 0 var(--space-4);
   }
 
   .theme-toggle {

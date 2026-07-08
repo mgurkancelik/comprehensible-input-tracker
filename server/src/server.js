@@ -18,14 +18,16 @@ app.get("/api/health", (req, res) => {
 });
 
 app.get("/api/db-test", (req, res) => {
-  const isConnected = mongoose.connection.readyState === 1;
+  const readyState = mongoose.connection.readyState;
 
-  if (isConnected) {
+  if (readyState === 1) {
     res.json({ ok: true, message: "MongoDB connection successful" });
     return;
   }
 
-  res.status(503).json({ ok: false, message: "MongoDB connection unavailable" });
+  res
+    .status(503)
+    .json({ ok: false, message: "MongoDB connection unavailable", readyState });
 });
 
 app.listen(PORT, () => {
