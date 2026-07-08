@@ -6,10 +6,12 @@
   color-scheme: dark;
 
   /* ---- Material Design 3 system color roles: koyu tema (varsayılan) ---- */
-  --md-sys-color-primary: #8b5cf6;
-  --md-sys-color-on-primary: #ffffff;
-  --md-sys-color-primary-container: rgba(139, 92, 246, 0.18);
-  --md-sys-color-on-primary-container: #8b5cf6;
+  /* Koyu temada primary/error rolleri M3 mantığına uygun TERS çevrilir:
+     accent tonu açık (yüzey üstünde metin olarak da okunaklı), on-color koyu. */
+  --md-sys-color-primary: #a78bfa;
+  --md-sys-color-on-primary: #1e1033;
+  --md-sys-color-primary-container: #382a5f;
+  --md-sys-color-on-primary-container: #ded2fb;
 
   --md-sys-color-secondary: #b7c0d8;
   --md-sys-color-on-secondary: #23293a;
@@ -18,13 +20,13 @@
 
   --md-sys-color-tertiary: #38bdf8;
   --md-sys-color-on-tertiary: #052430;
-  --md-sys-color-tertiary-container: rgba(56, 189, 248, 0.16);
-  --md-sys-color-on-tertiary-container: #38bdf8;
+  --md-sys-color-tertiary-container: #153a54;
+  --md-sys-color-on-tertiary-container: #bfe3f6;
 
-  --md-sys-color-error: #ef4444;
-  --md-sys-color-on-error: #ffffff;
-  --md-sys-color-error-container: rgba(239, 68, 68, 0.16);
-  --md-sys-color-on-error-container: #ef4444;
+  --md-sys-color-error: #f87171;
+  --md-sys-color-on-error: #2b0808;
+  --md-sys-color-error-container: #5a2222;
+  --md-sys-color-on-error-container: #ffdede;
 
   --md-sys-color-surface: #0b1020;
   --md-sys-color-surface-container-low: #0f172a;
@@ -45,21 +47,21 @@
   --color-border: var(--md-sys-color-outline);
   --color-text: var(--md-sys-color-on-surface);
   --color-text-muted: var(--md-sys-color-on-surface-variant);
-  --color-heading: #f8fafc;
+  --color-heading: var(--md-sys-color-on-surface);
 
   --color-primary: var(--md-sys-color-primary);
-  --color-primary-hover: #7c3aed;
+  --color-primary-hover: color-mix(in srgb, var(--md-sys-color-primary) 88%, black 12%);
   --color-primary-contrast: var(--md-sys-color-on-primary);
 
   --color-danger: var(--md-sys-color-error);
-  --color-danger-hover: #dc2626;
+  --color-danger-hover: color-mix(in srgb, var(--md-sys-color-error) 85%, black 15%);
 
   --color-success: #16a34a;
-  --color-success-hover: #15803d;
+  --color-success-hover: color-mix(in srgb, var(--color-success) 85%, black 15%);
 
   --color-progress: var(--md-sys-color-tertiary);
 
-  --color-focus-ring: #a78bfa;
+  --color-focus-ring: var(--md-sys-color-primary);
   --color-primary-soft: var(--md-sys-color-primary-container);
   --color-success-soft: rgba(22, 163, 74, 0.18);
 
@@ -78,9 +80,9 @@
   --space-7: 32px;
   --space-8: 40px;
 
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
   --radius-pill: 999px;
 
   --font-size-xs: 12px;
@@ -89,7 +91,7 @@
   --font-size-lg: 17px;
   --font-size-xl: 20px;
   --font-size-2xl: 26px;
-  --font-size-hero: clamp(30px, 4vw, 40px);
+  --font-size-hero: clamp(34px, 4.5vw, 46px);
 
   --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
 
@@ -107,30 +109,30 @@
   /* ---- Material Design 3 system color roles: açık tema ---- */
   --md-sys-color-primary: #7c3aed;
   --md-sys-color-on-primary: #ffffff;
-  --md-sys-color-primary-container: rgba(124, 58, 237, 0.12);
-  --md-sys-color-on-primary-container: #7c3aed;
+  --md-sys-color-primary-container: #efe7fd;
+  --md-sys-color-on-primary-container: #5b21b6;
 
   --md-sys-color-secondary: #5b6577;
   --md-sys-color-on-secondary: #ffffff;
   --md-sys-color-secondary-container: #dfe3ec;
   --md-sys-color-on-secondary-container: #333c4d;
 
-  --md-sys-color-tertiary: #0284c7;
+  --md-sys-color-tertiary: #0369a1;
   --md-sys-color-on-tertiary: #ffffff;
-  --md-sys-color-tertiary-container: rgba(2, 132, 199, 0.12);
-  --md-sys-color-on-tertiary-container: #0284c7;
+  --md-sys-color-tertiary-container: #dceef9;
+  --md-sys-color-on-tertiary-container: #075f92;
 
   --md-sys-color-error: #dc2626;
   --md-sys-color-on-error: #ffffff;
-  --md-sys-color-error-container: rgba(220, 38, 38, 0.12);
-  --md-sys-color-on-error-container: #dc2626;
+  --md-sys-color-error-container: #fce3e3;
+  --md-sys-color-on-error-container: #991b1b;
 
-  --md-sys-color-surface: #f3f4f7;
-  --md-sys-color-surface-container-low: #eef1f6;
-  --md-sys-color-surface-container: #f7f9fb;
+  --md-sys-color-surface: #e8eaf0;
+  --md-sys-color-surface-container-low: #f2f4f8;
+  --md-sys-color-surface-container: #f8fafc;
   --md-sys-color-surface-container-high: #ffffff;
   --md-sys-color-on-surface: #3f4552;
-  --md-sys-color-on-surface-variant: #667085;
+  --md-sys-color-on-surface-variant: #5c6678;
 
   --md-sys-color-outline: #c9cfda;
   --md-sys-color-outline-variant: #e2e5ec;
@@ -143,21 +145,21 @@
   --color-border: var(--md-sys-color-outline);
   --color-text: var(--md-sys-color-on-surface);
   --color-text-muted: var(--md-sys-color-on-surface-variant);
-  --color-heading: #14161c;
+  --color-heading: var(--md-sys-color-on-surface);
 
   --color-primary: var(--md-sys-color-primary);
-  --color-primary-hover: #6d28d9;
+  --color-primary-hover: color-mix(in srgb, var(--md-sys-color-primary) 88%, black 12%);
   --color-primary-contrast: var(--md-sys-color-on-primary);
 
   --color-danger: var(--md-sys-color-error);
-  --color-danger-hover: #b91c1c;
+  --color-danger-hover: color-mix(in srgb, var(--md-sys-color-error) 85%, black 15%);
 
-  --color-success: #15803d;
-  --color-success-hover: #166534;
+  --color-success: #146c34;
+  --color-success-hover: color-mix(in srgb, var(--color-success) 85%, black 15%);
 
   --color-progress: var(--md-sys-color-tertiary);
 
-  --color-focus-ring: #7c3aed;
+  --color-focus-ring: var(--md-sys-color-primary);
   --color-primary-soft: var(--md-sys-color-primary-container);
   --color-success-soft: rgba(21, 128, 61, 0.12);
 
@@ -198,7 +200,7 @@ select:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
-  box-shadow: 0 0 0 3px var(--color-primary-soft);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 30%, transparent);
 }
 
 /* Görsel olarak gizli ama ekran okuyucular için erişilebilir label'lar */

@@ -92,8 +92,10 @@ function StatsPanel({ contents }) {
     <section className="stats" aria-label="İstatistikler">
       {stats.map((stat) => (
         <div className="stat-card" key={stat.key}>
-          <span>{stat.label}</span>
-          <strong>{stat.value}</strong>
+          <div className="stat-body">
+            <span>{stat.label}</span>
+            <strong>{stat.value}</strong>
+          </div>
         </div>
       ))}
     </section>

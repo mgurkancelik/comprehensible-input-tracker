@@ -26,6 +26,17 @@ function ContentForm({
         </p>
 
         <div className="api-search">
+          <span className="search-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.6" />
+              <path
+                d="M11 11L14.5 14.5"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+            </svg>
+          </span>
           <label className="visually-hidden" htmlFor="showSearch">
             Dizi adı ile bilgi çek
           </label>
@@ -158,22 +169,25 @@ function ContentForm({
               </label>
 
               <div className="field">
-                <span className="field-label">İzlenen bölüm</span>
-                <div className="inline-field">
-                  <input
-                    id="watchedEpisodes"
-                    name="watchedEpisodes"
-                    value={form.watchedEpisodes}
-                    onChange={handleChange}
-                    type="number"
-                    min="0"
-                    placeholder="İzlenen bölüm"
-                  />
-
-                  <button type="button" onClick={markAllInForm}>
+                <div className="field-label-row">
+                  <span className="field-label">İzlenen bölüm</span>
+                  <button
+                    type="button"
+                    className="field-label-action"
+                    onClick={markAllInForm}
+                  >
                     Tümünü seç
                   </button>
                 </div>
+                <input
+                  id="watchedEpisodes"
+                  name="watchedEpisodes"
+                  value={form.watchedEpisodes}
+                  onChange={handleChange}
+                  type="number"
+                  min="0"
+                  placeholder="İzlenen bölüm"
+                />
               </div>
 
               <label className="field" htmlFor="minutesPerEpisode">
@@ -206,7 +220,23 @@ function ContentForm({
         </details>
 
         <div className="form-submit-row">
-          <button type="submit">Ekle</button>
+          <button type="submit" className="submit-btn">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M8 2.5V13.5M2.5 8H13.5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+            İçerik Ekle
+          </button>
         </div>
       </form>
     </section>
