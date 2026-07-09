@@ -15,7 +15,11 @@ import {
   getInputRecordCounts,
   formatMinutesLabel,
 } from "./utils/stats";
-import { getUserContents, createUserContent } from "./services/userContents";
+import {
+  getUserContents,
+  createUserContent,
+  deleteUserContent,
+} from "./services/userContents";
 import { getContents, createContent } from "./services/contents";
 import "./App.css";
 
@@ -297,6 +301,10 @@ function App() {
   const [isSavingContent, setIsSavingContent] = useState(false);
   const [contentAddFeedback, setContentAddFeedback] = useState(null);
 
+  // Aynı içerik için üst üste silme isteği gönderilmesini engeller (frontend
+  // id'sini tutar, aynı anda ikinci bir DELETE gitmesini önler).
+  const [deletingContentId, setDeletingContentId] = useState(null);
+
   // Sayfa açılışında MongoDB backend'den kullanıcının içeriklerini çekmeyi
   // dener. Başarılı olursa ve gelen liste doluysa contents state'i API
   // verisiyle değiştirilir. API hata verirse veya boş dönerse, localStorage'dan
@@ -556,7 +564,11 @@ function App() {
     setShowSearch("");
   };
 
-  const deleteContent = (id, title) => {
+  // Silme akışı: backendUserContentId'si olan kayıtlar için önce backend'den
+  // silmeyi dener, sadece başarılı olursa (veya backend "zaten yok" derse)
+  // state'ten çıkarır. backendUserContentId'si olmayan eski localStorage-only
+  // kayıtlar için backend'e hiç gitmeden doğrudan yerelden silinir.
+  const deleteContent = async (id, title) => {
     const confirmed = window.confirm(
       `"${title}" içeriğini silmek istediğine emin misin? Bu işlem geri alınamaz.`
     );
@@ -565,7 +577,51 @@ function App() {
       return;
     }
 
-    setContents(contents.filter((item) => item.id !== id));
+    if (deletingContentId === id) {
+      return;
+    }
+
+    const item = contents.find((content) => content.id === id);
+
+    if (!item || !item.backendUserContentId) {
+      setContents((prevContents) =>
+        prevContents.filter((content) => content.id !== id)
+      );
+      setContentAddFeedback({ type: "success", text: "Yerel kayıt silindi." });
+      return;
+    }
+
+    setDeletingContentId(id);
+    setContentAddFeedback(null);
+
+    try {
+      await deleteUserContent(item.backendUserContentId);
+
+      setContents((prevContents) =>
+        prevContents.filter((content) => content.id !== id)
+      );
+      setContentAddFeedback({
+        type: "success",
+        text: "İçerik kütüphanenden silindi.",
+      });
+    } catch (error) {
+      if (error.status === 404) {
+        setContents((prevContents) =>
+          prevContents.filter((content) => content.id !== id)
+        );
+        setContentAddFeedback({
+          type: "error",
+          text: "Backend'de kayıt bulunamadı, yerel kayıt temizlendi.",
+        });
+      } else {
+        setContentAddFeedback({
+          type: "error",
+          text: "Silme işlemi başarısız oldu, içerik ekranda kaldı.",
+        });
+      }
+    } finally {
+      setDeletingContentId(null);
+    }
   };
 
   const watchOneEpisode = (id) => {
@@ -1542,8 +1598,9 @@ function App() {
           <button
             className="delete-btn"
             onClick={() => deleteContent(item.id, item.title)}
+            disabled={deletingContentId === item.id}
           >
-            Sil
+            {deletingContentId === item.id ? "Siliniyor..." : "Sil"}
           </button>
         </div>
 
