@@ -18,6 +18,7 @@ import {
 import {
   getUserContents,
   createUserContent,
+  updateUserContent,
   deleteUserContent,
 } from "./services/userContents";
 import { getContents, createContent } from "./services/contents";
@@ -133,11 +134,23 @@ function mapUserContentToFrontendContent(userContent) {
       ? userContent.contentId
       : {};
 
+  // sourceId backend'e hiç kaydedilmiyor (sadece tmdbId + mediaType
+  // saklanıyor), bu yüzden her reload'da yeniden kurulmalı — aksi hâlde
+  // toggleEpisodeWatched/toggleSeasonWatched gibi sourceId ile eşleştirme
+  // yapan fonksiyonlar, sourceId'si undefined kalan birden fazla "tv"
+  // içeriğini birbirine karıştırır. DiscoverPage.jsx'teki normalizeTmdbItem
+  // ile birebir aynı format kullanılıyor: "tmdb-movie-123" / "tmdb-tv-123".
+  const reconstructedSourceId =
+    contentData.tmdbId != null
+      ? `tmdb-${contentData.mediaType === "movie" ? "movie" : "tv"}-${contentData.tmdbId}`
+      : null;
+
   return {
     ...contentData,
     id: userContent._id,
     backendUserContentId: userContent._id,
     backendContentId: contentData._id,
+    sourceId: reconstructedSourceId,
     title: contentData.title || contentData.name || "",
     name: contentData.name || contentData.title || "",
     type: contentData.type || "",
@@ -202,6 +215,31 @@ async function saveContentToBackend(localContent, targetStatus) {
   } catch (error) {
     if (error.status === 409) {
       return { status: "duplicate" };
+    }
+
+    return { status: "error", message: error.message };
+  }
+}
+
+// Tüm "güncelleme" akışlarının (status, not, bölüm ilerlemesi) ortak
+// kullandığı backend PUT fonksiyonu. Sadece backend I/O yapar, state'e hiç
+// dokunmaz — çağıran fonksiyon sonucu görüp state'i ne zaman/nasıl
+// güncelleyeceğine kendi karar verir:
+// - "local": content.backendUserContentId yok, backend'e hiç gidilmedi.
+// - "success": PUT başarılı.
+// - "not_found": backend 404 döndü (kayıt backend'de yok).
+// - "error": başka bir hata (network, 400, 500 vb.).
+async function saveUserContentUpdate(content, apiPayload) {
+  if (!content || !content.backendUserContentId) {
+    return { status: "local" };
+  }
+
+  try {
+    await updateUserContent(content.backendUserContentId, apiPayload);
+    return { status: "success" };
+  } catch (error) {
+    if (error.status === 404) {
+      return { status: "not_found" };
     }
 
     return { status: "error", message: error.message };
@@ -304,6 +342,10 @@ function App() {
   // Aynı içerik için üst üste silme isteği gönderilmesini engeller (frontend
   // id'sini tutar, aynı anda ikinci bir DELETE gitmesini önler).
   const [deletingContentId, setDeletingContentId] = useState(null);
+
+  // setContentStatus / updateContentNotes gibi tek seferlik kullanıcı
+  // aksiyonlarında aynı içerik için üst üste PUT gitmesini engeller.
+  const [updatingContentId, setUpdatingContentId] = useState(null);
 
   // Sayfa açılışında MongoDB backend'den kullanıcının içeriklerini çekmeyi
   // dener. Başarılı olursa ve gelen liste doluysa contents state'i API
@@ -624,74 +666,116 @@ function App() {
     }
   };
 
+  // Backend PUT'unu arka planda (beklenmeden) dener; sadece hata/404
+  // durumunda kullanıcıyı bilgilendirir. Local state zaten optimistic olarak
+  // güncellendiği için "success"/"local" durumlarında ekstra bir şey yapmaz —
+  // bu, sık tıklanan bölüm takibi aksiyonları için gereksiz mesaj spamini önler.
+  function syncSummaryToBackendInBackground(content, apiPayload) {
+    saveUserContentUpdate(content, apiPayload).then((result) => {
+      if (result.status === "error") {
+        setContentAddFeedback({
+          type: "error",
+          text: "Güncelleme MongoDB'ye kaydedilemedi.",
+        });
+      } else if (result.status === "not_found") {
+        setContentAddFeedback({
+          type: "error",
+          text: "Backend'de kayıt bulunamadı, yerel olarak güncellendi.",
+        });
+      }
+    });
+  }
+
   const watchOneEpisode = (id) => {
     const today = getToday();
+    const content = contents.find((item) => item.id === id);
 
-    setContents(
-      contents.map((item) => {
-        if (item.id !== id) {
-          return item;
-        }
+    if (!content || content.watchedEpisodes >= content.totalEpisodes) {
+      return;
+    }
 
-        if (item.watchedEpisodes >= item.totalEpisodes) {
-          return item;
-        }
+    const newWatchedEpisodes = content.watchedEpisodes + 1;
+    const isFinished = newWatchedEpisodes >= content.totalEpisodes;
 
-        const newWatchedEpisodes = item.watchedEpisodes + 1;
-        const isFinished = newWatchedEpisodes >= item.totalEpisodes;
+    const updatedContent = {
+      ...content,
+      watchedEpisodes: newWatchedEpisodes,
+      status: isFinished ? "İzlediklerim" : "İzleniyor",
+      completedDate: isFinished ? today : content.completedDate,
+      watchLogs: [
+        ...(content.watchLogs || []),
+        {
+          date: today,
+          minutes: content.minutesPerEpisode,
+          words: content.wordsPerEpisode,
+          title: content.title,
+          type: "manual",
+        },
+      ],
+    };
 
-        return {
-          ...item,
-          watchedEpisodes: newWatchedEpisodes,
-          status: isFinished ? "İzlediklerim" : "İzleniyor",
-          completedDate: isFinished ? today : item.completedDate,
-          watchLogs: [
-            ...(item.watchLogs || []),
-            {
-              date: today,
-              minutes: item.minutesPerEpisode,
-              words: item.wordsPerEpisode,
-              title: item.title,
-              type: "manual",
-            },
-          ],
-        };
-      })
+    setContents((prevContents) =>
+      prevContents.map((item) => (item.id === id ? updatedContent : item))
     );
+
+    const watchedMinutes = newWatchedEpisodes * (content.minutesPerEpisode || 0);
+    const watchedPercentage =
+      content.totalEpisodes > 0
+        ? Math.min(
+            100,
+            Math.round((newWatchedEpisodes / content.totalEpisodes) * 100)
+          )
+        : 0;
+
+    syncSummaryToBackendInBackground(content, {
+      watchedEpisodes: newWatchedEpisodes,
+      watchedMinutes,
+      watchedPercentage,
+      status: FRONTEND_STATUS_TO_API_STATUS[updatedContent.status] || "watching",
+    });
   };
 
   const markAllWatched = (id) => {
     const today = getToday();
+    const content = contents.find((item) => item.id === id);
 
-    setContents(
-      contents.map((item) => {
-        if (item.id !== id) {
-          return item;
-        }
+    if (!content) {
+      return;
+    }
 
-        const remainingEpisodes = Math.max(
-          item.totalEpisodes - item.watchedEpisodes,
-          0
-        );
-
-        return {
-          ...item,
-          watchedEpisodes: item.totalEpisodes,
-          status: "İzlediklerim",
-          completedDate: item.completedDate || today,
-          watchLogs: [
-            ...(item.watchLogs || []),
-            {
-              date: today,
-              minutes: remainingEpisodes * item.minutesPerEpisode,
-              words: remainingEpisodes * item.wordsPerEpisode,
-              title: item.title,
-              type: "manual",
-            },
-          ],
-        };
-      })
+    const remainingEpisodes = Math.max(
+      content.totalEpisodes - content.watchedEpisodes,
+      0
     );
+
+    const updatedContent = {
+      ...content,
+      watchedEpisodes: content.totalEpisodes,
+      status: "İzlediklerim",
+      completedDate: content.completedDate || today,
+      watchLogs: [
+        ...(content.watchLogs || []),
+        {
+          date: today,
+          minutes: remainingEpisodes * content.minutesPerEpisode,
+          words: remainingEpisodes * content.wordsPerEpisode,
+          title: content.title,
+          type: "manual",
+        },
+      ],
+    };
+
+    setContents((prevContents) =>
+      prevContents.map((item) => (item.id === id ? updatedContent : item))
+    );
+
+    syncSummaryToBackendInBackground(content, {
+      watchedEpisodes: content.totalEpisodes,
+      watchedMinutes: content.totalEpisodes * (content.minutesPerEpisode || 0),
+      watchedPercentage: 100,
+      status: "completed",
+      finishDate: updatedContent.completedDate || today,
+    });
   };
 
   const buildWatchlistContent = ({
@@ -802,30 +886,74 @@ function App() {
 
   // Bir içeriğin durumunu (İzleyecekler / İzleniyor / İzlediklerim) doğrudan
   // günceller. Bölüm/sezon verisine hiç dokunmaz — sadece status ve
-  // buna bağlı start/completed tarihlerini ayarlar.
-  const setContentStatus = (contentId, status) => {
+  // buna bağlı start/completed tarihlerini ayarlar. Önce backend'e PUT
+  // atmayı dener, sadece başarılı olursa (veya backend'e hiç yazılmamış
+  // eski bir kayıtsa) state'i günceller — böylece backend hatası veri
+  // kaybına/uyumsuzluğa yol açmaz.
+  const setContentStatus = async (contentId, status) => {
+    if (updatingContentId === contentId) {
+      return;
+    }
+
+    const content = contents.find((item) => item.id === contentId);
+
+    if (!content) {
+      return;
+    }
+
     const today = getToday();
     const isCompleted = status === "İzlediklerim";
     const isWatching = status === "İzleniyor";
 
-    setContents((prevContents) =>
-      prevContents.map((content) => {
-        if (content.id !== contentId) {
-          return content;
-        }
+    const nextLocalContent = {
+      ...content,
+      status,
+      startDate:
+        content.startDate ||
+        (isWatching || isCompleted ? today : content.startDate),
+      completedDate: isCompleted
+        ? content.completedDate || today
+        : content.completedDate,
+    };
 
-        return {
-          ...content,
-          status,
-          startDate:
-            content.startDate ||
-            (isWatching || isCompleted ? today : content.startDate),
-          completedDate: isCompleted
-            ? content.completedDate || today
-            : content.completedDate,
-        };
-      })
-    );
+    setUpdatingContentId(contentId);
+    setContentAddFeedback(null);
+
+    const result = await saveUserContentUpdate(content, {
+      status: FRONTEND_STATUS_TO_API_STATUS[status] || "watchlist",
+    });
+
+    if (result.status === "success" || result.status === "local") {
+      setContents((prevContents) =>
+        prevContents.map((item) =>
+          item.id === contentId ? nextLocalContent : item
+        )
+      );
+
+      setContentAddFeedback(
+        result.status === "success"
+          ? { type: "success", text: "Durum güncellendi." }
+          : { type: "success", text: "Yerel kayıt güncellendi." }
+      );
+    } else if (result.status === "not_found") {
+      setContents((prevContents) =>
+        prevContents.map((item) =>
+          item.id === contentId ? nextLocalContent : item
+        )
+      );
+
+      setContentAddFeedback({
+        type: "error",
+        text: "Backend'de kayıt bulunamadı, yerel olarak güncellendi.",
+      });
+    } else {
+      setContentAddFeedback({
+        type: "error",
+        text: "Güncelleme MongoDB'ye kaydedilemedi.",
+      });
+    }
+
+    setUpdatingContentId(null);
   };
 
   // Keşfet'ten içerik eklemeyi (+ butonu, İzleyeceğim/İzliyorum/İzledim
@@ -1035,112 +1163,170 @@ function App() {
 
   // Tek bir bölümün izlendi durumunu değiştirir. Eski içeriklerde seasons
   // yoksa veya eşleşen bölüm bulunamazsa güvenli şekilde hiçbir şey yapmaz.
+  // Detaylı seasons/episodes verisi backend'in UserContent modelinde
+  // desteklenmiyor (sadece watchedEpisodes/watchedMinutes/watchedPercentage/
+  // status gibi özet alanlar var) — bu yüzden seasons sadece localStorage'da
+  // tutulur, backend'e yalnızca özet alanlar gönderilir.
   const toggleEpisodeWatched = (sourceId, seasonNumber, episodeId) => {
+    if (sourceId == null) {
+      return;
+    }
+
     const today = getToday();
 
-    setContents((prevContents) =>
-      prevContents.map((content) => {
-        if (content.sourceId !== sourceId || content.mediaType !== "tv") {
-          return content;
-        }
+    // Önce hedef içeriği ve yeni değerlerini setContents DIŞINDA hesapla.
+    // (setContents'e verilen updater fonksiyonu React tarafından senkron
+    // çalıştırılacağı garanti edilmez — updater'ın İÇİNDE bir dış değişkene
+    // yazıp updater ÇAĞRISINDAN hemen sonra o değişkeni okumak, değer henüz
+    // atanmadan okunduğu için her zaman eski/boş değeri verir. Bu yüzden
+    // watchOneEpisode ile aynı güvenli desen kullanılıyor: hesapla, sonra
+    // setContents'e hazır objeyi ver, sonra arka planda senkronize et.)
+    const content = contents.find(
+      (item) => item.sourceId === sourceId && item.mediaType === "tv"
+    );
 
-        const seasonsList = content.seasons || [];
+    if (!content) {
+      return;
+    }
 
-        const updatedSeasons = seasonsList.map((season) => {
-          if (season.seasonNumber !== seasonNumber) {
-            return season;
+    const seasonsList = content.seasons || [];
+
+    const updatedSeasons = seasonsList.map((season) => {
+      if (season.seasonNumber !== seasonNumber) {
+        return season;
+      }
+
+      return {
+        ...season,
+        episodes: season.episodes.map((episode) => {
+          if (episode.id !== episodeId) {
+            return episode;
           }
 
+          const nextWatched = !episode.watched;
+
           return {
-            ...season,
-            episodes: season.episodes.map((episode) => {
-              if (episode.id !== episodeId) {
-                return episode;
-              }
-
-              const nextWatched = !episode.watched;
-
-              return {
-                ...episode,
-                watched: nextWatched,
-                watchedAt: nextWatched ? today : null,
-              };
-            }),
+            ...episode,
+            watched: nextWatched,
+            watchedAt: nextWatched ? today : null,
           };
-        });
+        }),
+      };
+    });
 
-        const watchedEpisodes = updatedSeasons.reduce(
-          (sum, season) =>
-            sum + season.episodes.filter((episode) => episode.watched).length,
-          0
-        );
-
-        const isFinished =
-          content.totalEpisodes > 0 &&
-          watchedEpisodes >= content.totalEpisodes;
-
-        return {
-          ...content,
-          seasons: updatedSeasons,
-          watchedEpisodes,
-          completedDate:
-            isFinished && !content.completedDate
-              ? today
-              : content.completedDate,
-        };
-      })
+    const watchedEpisodes = updatedSeasons.reduce(
+      (sum, season) =>
+        sum + season.episodes.filter((episode) => episode.watched).length,
+      0
     );
+
+    const isFinished =
+      content.totalEpisodes > 0 && watchedEpisodes >= content.totalEpisodes;
+
+    const updatedContent = {
+      ...content,
+      seasons: updatedSeasons,
+      watchedEpisodes,
+      completedDate:
+        isFinished && !content.completedDate ? today : content.completedDate,
+    };
+
+    setContents((prevContents) =>
+      prevContents.map((item) => (item.id === content.id ? updatedContent : item))
+    );
+
+    const watchedMinutes = watchedEpisodes * (content.minutesPerEpisode || 0);
+    const watchedPercentage =
+      content.totalEpisodes > 0
+        ? Math.min(
+            100,
+            Math.round((watchedEpisodes / content.totalEpisodes) * 100)
+          )
+        : 0;
+
+    syncSummaryToBackendInBackground(content, {
+      watchedEpisodes,
+      watchedMinutes,
+      watchedPercentage,
+      status:
+        FRONTEND_STATUS_TO_API_STATUS[getStatus(updatedContent)] || "watching",
+    });
   };
 
   // Bir sezondaki tüm bölümleri tek seferde işaretler/kaldırır.
-  // toggleEpisodeWatched ile aynı güvenli desen, sadece tüm bölümlere uygulanır.
+  // toggleEpisodeWatched ile aynı güvenli desen (ve aynı backend özet-alan
+  // sınırlaması), sadece tüm bölümlere uygulanır.
   const toggleSeasonWatched = (sourceId, seasonNumber, markWatched) => {
+    if (sourceId == null) {
+      return;
+    }
+
     const today = getToday();
 
-    setContents((prevContents) =>
-      prevContents.map((content) => {
-        if (content.sourceId !== sourceId || content.mediaType !== "tv") {
-          return content;
-        }
-
-        const seasonsList = content.seasons || [];
-
-        const updatedSeasons = seasonsList.map((season) => {
-          if (season.seasonNumber !== seasonNumber) {
-            return season;
-          }
-
-          return {
-            ...season,
-            episodes: season.episodes.map((episode) => ({
-              ...episode,
-              watched: markWatched,
-              watchedAt: markWatched ? today : null,
-            })),
-          };
-        });
-
-        const watchedEpisodes = updatedSeasons.reduce(
-          (sum, season) =>
-            sum + season.episodes.filter((episode) => episode.watched).length,
-          0
-        );
-
-        const isFinished =
-          content.totalEpisodes > 0 &&
-          watchedEpisodes >= content.totalEpisodes;
-
-        return {
-          ...content,
-          seasons: updatedSeasons,
-          watchedEpisodes,
-          completedDate:
-            isFinished && !content.completedDate
-              ? today
-              : content.completedDate,
-        };
-      })
+    // toggleEpisodeWatched ile aynı desen: hesaplama setContents dışında
+    // yapılır (updater fonksiyonunun senkron çalıştığı varsayılamaz).
+    const content = contents.find(
+      (item) => item.sourceId === sourceId && item.mediaType === "tv"
     );
+
+    if (!content) {
+      return;
+    }
+
+    const seasonsList = content.seasons || [];
+
+    const updatedSeasons = seasonsList.map((season) => {
+      if (season.seasonNumber !== seasonNumber) {
+        return season;
+      }
+
+      return {
+        ...season,
+        episodes: season.episodes.map((episode) => ({
+          ...episode,
+          watched: markWatched,
+          watchedAt: markWatched ? today : null,
+        })),
+      };
+    });
+
+    const watchedEpisodes = updatedSeasons.reduce(
+      (sum, season) =>
+        sum + season.episodes.filter((episode) => episode.watched).length,
+      0
+    );
+
+    const isFinished =
+      content.totalEpisodes > 0 && watchedEpisodes >= content.totalEpisodes;
+
+    const updatedContent = {
+      ...content,
+      seasons: updatedSeasons,
+      watchedEpisodes,
+      completedDate:
+        isFinished && !content.completedDate ? today : content.completedDate,
+    };
+
+    setContents((prevContents) =>
+      prevContents.map((item) => (item.id === content.id ? updatedContent : item))
+    );
+
+    const watchedMinutes = watchedEpisodes * (content.minutesPerEpisode || 0);
+    const watchedPercentage =
+      content.totalEpisodes > 0
+        ? Math.min(
+            100,
+            Math.round((watchedEpisodes / content.totalEpisodes) * 100)
+          )
+        : 0;
+
+    syncSummaryToBackendInBackground(content, {
+      watchedEpisodes,
+      watchedMinutes,
+      watchedPercentage,
+      status:
+        FRONTEND_STATUS_TO_API_STATUS[getStatus(updatedContent)] || "watching",
+    });
   };
 
   // Kayıtlı bir content nesnesini ContentDetailModal'ın beklediği (Keşfet
@@ -1176,20 +1362,58 @@ function App() {
 
   // Sadece ilgili content'in notes alanını günceller, başka hiçbir alana
   // dokunmaz. Yeni içerik oluşturulurken notes alanı hiç eklenmiyor —
-  // sadece kullanıcı gerçekten not yazınca oluşuyor.
-  const updateContentNotes = (contentId, notes) => {
-    setContents((prevContents) =>
-      prevContents.map((content) => {
-        if (content.id !== contentId) {
-          return content;
-        }
+  // sadece kullanıcı gerçekten not yazınca oluşuyor. setContentStatus ile
+  // aynı desen: önce backend'e PUT atmayı dener, sadece başarılı olursa
+  // (veya backend'e hiç yazılmamış eski bir kayıtsa) state'i günceller.
+  const updateContentNotes = async (contentId, notes) => {
+    if (updatingContentId === contentId) {
+      return;
+    }
 
-        return {
-          ...content,
-          notes,
-        };
-      })
-    );
+    const content = contents.find((item) => item.id === contentId);
+
+    if (!content) {
+      return;
+    }
+
+    const nextLocalContent = { ...content, notes };
+
+    setUpdatingContentId(contentId);
+    setContentAddFeedback(null);
+
+    const result = await saveUserContentUpdate(content, { notes });
+
+    if (result.status === "success" || result.status === "local") {
+      setContents((prevContents) =>
+        prevContents.map((item) =>
+          item.id === contentId ? nextLocalContent : item
+        )
+      );
+
+      setContentAddFeedback(
+        result.status === "success"
+          ? { type: "success", text: "Not güncellendi." }
+          : { type: "success", text: "Yerel kayıt güncellendi." }
+      );
+    } else if (result.status === "not_found") {
+      setContents((prevContents) =>
+        prevContents.map((item) =>
+          item.id === contentId ? nextLocalContent : item
+        )
+      );
+
+      setContentAddFeedback({
+        type: "error",
+        text: "Backend'de kayıt bulunamadı, yerel olarak güncellendi.",
+      });
+    } else {
+      setContentAddFeedback({
+        type: "error",
+        text: "Güncelleme MongoDB'ye kaydedilemedi.",
+      });
+    }
+
+    setUpdatingContentId(null);
   };
 
   const MAX_VISIBLE_SEASON_CHIPS = 5;
@@ -1557,6 +1781,7 @@ function App() {
                         isActive ? " card-status-chip--active" : ""
                       }`}
                       onClick={() => setContentStatus(item.id, option.value)}
+                      disabled={updatingContentId === item.id}
                     >
                       {option.label}
                     </button>
