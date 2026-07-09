@@ -15,11 +15,194 @@ import {
   getInputRecordCounts,
   formatMinutesLabel,
 } from "./utils/stats";
+import { getUserContents, createUserContent } from "./services/userContents";
+import { getContents, createContent } from "./services/contents";
 import "./App.css";
 
 const THEME_STORAGE_KEY = "ciTrackerTheme";
 const GOAL_STORAGE_KEY = "inputGoalTargetHours";
 const VALID_GOAL_HOURS = [100, 250, 500, 1000];
+
+// TODO: login sistemi gelince gerçek userId kullanılacak.
+const TEMP_USER_ID = "6a4fa8df2d09d6bce7c932ca";
+
+// Backend'deki UserContent.status enum'u (İngilizce) ile frontend'in
+// beklediği status metinleri (Türkçe) farklı olduğu için köprü kurulur.
+// "dropped" için ayrı bir liste henüz yok, güvenli varsayılan olarak
+// "İzleyecekler"e düşer.
+const API_STATUS_TO_FRONTEND_STATUS = {
+  watchlist: "İzleyecekler",
+  watching: "İzleniyor",
+  completed: "İzlediklerim",
+  dropped: "İzleyecekler",
+};
+
+// Frontend status metinlerini backend'in beklediği enum değerlerine çevirir
+// (createUserContent çağrılırken kullanılır).
+const FRONTEND_STATUS_TO_API_STATUS = {
+  İzleyecekler: "watchlist",
+  İzleniyor: "watching",
+  İzlediklerim: "completed",
+};
+
+// Keşfet öğelerinin sourceId'si "tmdb-movie-12345" / "tmdb-tv-12345" gibi
+// önekli bir string'dir (bkz. DiscoverPage.jsx normalizeTmdbItem) — backend'in
+// Content.tmdbId alanı ise Number tipindedir. Bu fonksiyon sondaki sayısal
+// kısmı çıkarır; zaten sayısal bir değerse (örn. backend'den populate edilmiş
+// contentData.tmdbId) olduğu gibi döner.
+function extractTmdbNumericId(rawId) {
+  if (rawId === null || rawId === undefined) {
+    return null;
+  }
+
+  if (typeof rawId === "number") {
+    return rawId;
+  }
+
+  const match = String(rawId).match(/(\d+)$/);
+  return match ? Number(match[1]) : null;
+}
+
+// Herhangi bir "local content" nesnesi (manuel form, öneri veya Keşfet
+// kaynaklı fark etmeksizin) için backend'deki ortak content kataloğunda
+// (tmdbId/sourceId + mediaType eşleşmesiyle, yoksa title + mediaType ile)
+// mevcut kaydı arar, bulamazsa yeni bir content kaydı oluşturur. Her iki
+// durumda da oluşan/bulunan content dokümanını döner.
+async function findOrCreateBackendContentFromLocal(localContent) {
+  const tmdbId = extractTmdbNumericId(
+    localContent.sourceId ?? localContent.tmdbId ?? null
+  );
+  const mediaType = localContent.mediaType || "";
+  const posterUrl = localContent.posterUrl || localContent.poster || "";
+  const rating = localContent.tmdbRating ?? localContent.rating ?? null;
+
+  const response = await getContents();
+  const existingContents = Array.isArray(response)
+    ? response
+    : response?.data || [];
+
+  const matchedContent = existingContents.find((existing) => {
+    if (tmdbId != null && existing.tmdbId != null) {
+      return (
+        existing.tmdbId === tmdbId &&
+        (existing.mediaType || "") === mediaType
+      );
+    }
+
+    return (
+      (existing.title || "").trim().toLowerCase() ===
+        (localContent.title || "").trim().toLowerCase() &&
+      (existing.mediaType || "") === mediaType
+    );
+  });
+
+  if (matchedContent) {
+    return matchedContent;
+  }
+
+  const created = await createContent({
+    title: localContent.title,
+    name: localContent.title,
+    type: localContent.type,
+    mediaType,
+    tmdbId,
+    poster: posterUrl,
+    posterUrl,
+    overview: localContent.overview || "",
+    rating,
+    tmdbRating: rating,
+    totalEpisodes: localContent.totalEpisodes || 0,
+    episodeDuration: localContent.minutesPerEpisode || 0,
+    wordsPerEpisode: localContent.wordsPerEpisode || 0,
+  });
+
+  return created?.data;
+}
+
+// Backend'den gelen bir userContent kaydını (+ populate edilmiş contentId)
+// mevcut frontend content shape'ine çevirir. Ortak içerik bilgileri
+// (title/poster/totalEpisodes vb.) contentId'den, kullanıcıya özel bilgiler
+// (status/watchedEpisodes/notes vb.) userContent'in kendisinden gelir.
+function mapUserContentToFrontendContent(userContent) {
+  const contentData =
+    userContent.contentId && typeof userContent.contentId === "object"
+      ? userContent.contentId
+      : {};
+
+  return {
+    ...contentData,
+    id: userContent._id,
+    backendUserContentId: userContent._id,
+    backendContentId: contentData._id,
+    title: contentData.title || contentData.name || "",
+    name: contentData.name || contentData.title || "",
+    type: contentData.type || "",
+    mediaType: contentData.mediaType || "",
+    posterUrl: contentData.poster || "",
+    overview: contentData.overview || "",
+    totalEpisodes: contentData.totalEpisodes || 0,
+    minutesPerEpisode: contentData.episodeDuration || 0,
+    wordsPerEpisode: contentData.wordsPerEpisode || 0,
+    tmdbRating: contentData.rating || null,
+    seasons: contentData.seasons || [],
+    status: API_STATUS_TO_FRONTEND_STATUS[userContent.status] || "İzleyecekler",
+    watchedMinutes: userContent.watchedMinutes,
+    watchedPercentage: userContent.watchedPercentage,
+    watchedEpisodes: userContent.watchedEpisodes || 0,
+    notes: userContent.notes || "",
+    watchLogs: userContent.watchLogs || [],
+    startDate: userContent.startDate || "",
+    finishDate: userContent.finishDate || "",
+  };
+}
+
+// Tüm "içerik ekleme" akışlarının (manuel form, öneri, Keşfet) ortak kullandığı
+// backend kayıt fonksiyonu: önce content kataloğunu bulur/oluşturur, sonra bu
+// kullanıcı için userContent kaydı açar. Sonucu { status, content|message }
+// şeklinde döner; state güncellemesini çağıran fonksiyon kendi ihtiyacına
+// göre yapar (yeni kart ekleme veya mevcut legacy kaydı güncelleme gibi).
+async function saveContentToBackend(localContent, targetStatus) {
+  try {
+    const backendContent = await findOrCreateBackendContentFromLocal(localContent);
+
+    const totalEpisodes = localContent.totalEpisodes || 0;
+    const watchedEpisodes = localContent.watchedEpisodes || 0;
+    const watchedMinutes = watchedEpisodes * (localContent.minutesPerEpisode || 0);
+    const watchedPercentage =
+      totalEpisodes > 0
+        ? Math.min(100, Math.round((watchedEpisodes / totalEpisodes) * 100))
+        : 0;
+
+    const createResponse = await createUserContent({
+      userId: TEMP_USER_ID,
+      contentId: backendContent._id,
+      status: FRONTEND_STATUS_TO_API_STATUS[targetStatus] || "watchlist",
+      watchedMinutes,
+      watchedPercentage,
+      watchedEpisodes,
+      notes: localContent.notes || "",
+      watchLogs: localContent.watchLogs || [],
+      startDate: localContent.startDate || "",
+      finishDate: localContent.completedDate || localContent.finishDate || "",
+    });
+
+    const mappedContent = mapUserContentToFrontendContent({
+      ...createResponse.data,
+      contentId: backendContent,
+    });
+
+    return {
+      status: "success",
+      content: { ...localContent, ...mappedContent },
+    };
+  } catch (error) {
+    if (error.status === 409) {
+      return { status: "duplicate" };
+    }
+
+    return { status: "error", message: error.message };
+  }
+}
 
 const STATUS_OPTIONS = [
   { value: "İzleyecekler", label: "İzleyeceğim" },
@@ -104,6 +287,58 @@ function App() {
   useEffect(() => {
     localStorage.setItem("inputContentsV5", JSON.stringify(contents));
   }, [contents]);
+
+  const [isContentsLoading, setIsContentsLoading] = useState(false);
+  const [contentsError, setContentsError] = useState(null);
+
+  // Tüm "içerik ekleme" akışları (manuel form, öneri, Keşfet) bu ortak
+  // guard'ı ve feedback state'ini paylaşır — aynı anda çakışan çift
+  // gönderimi engeller, tek bir yerden başarı/hata mesajı gösterir.
+  const [isSavingContent, setIsSavingContent] = useState(false);
+  const [contentAddFeedback, setContentAddFeedback] = useState(null);
+
+  // Sayfa açılışında MongoDB backend'den kullanıcının içeriklerini çekmeyi
+  // dener. Başarılı olursa ve gelen liste doluysa contents state'i API
+  // verisiyle değiştirilir. API hata verirse veya boş dönerse, localStorage'dan
+  // yüklenmiş olan mevcut contents state'ine hiç dokunulmaz — kullanıcı veri
+  // kaybetmez.
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadUserContentsFromApi() {
+      setIsContentsLoading(true);
+      setContentsError(null);
+
+      try {
+        const response = await getUserContents(TEMP_USER_ID);
+        const userContents = response?.data || [];
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (userContents.length > 0) {
+          setContents(userContents.map(mapUserContentToFrontendContent));
+        }
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        setContentsError(error.message);
+      } finally {
+        if (isMounted) {
+          setIsContentsLoading(false);
+        }
+      }
+    }
+
+    loadUserContentsFromApi();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const toSafeNumber = (value) => {
     const numberValue = Number(value);
@@ -218,11 +453,15 @@ function App() {
     }
   };
 
-  const addContent = (event) => {
+  const addContent = async (event) => {
     event.preventDefault();
 
     if (form.title.trim() === "") {
       alert("İçerik adı boş olamaz.");
+      return;
+    }
+
+    if (isSavingContent) {
       return;
     }
 
@@ -273,7 +512,31 @@ function App() {
           : [],
     };
 
-    setContents([...contents, newContent]);
+    setIsSavingContent(true);
+    setContentAddFeedback(null);
+
+    const result = await saveContentToBackend(newContent, newContent.status);
+
+    if (result.status === "success") {
+      setContents((prevContents) => [...prevContents, result.content]);
+      setContentAddFeedback({
+        type: "success",
+        text: "İçerik eklendi ve kütüphanene kaydedildi.",
+      });
+    } else if (result.status === "duplicate") {
+      setContentAddFeedback({
+        type: "error",
+        text: "Bu içerik zaten kütüphanende var.",
+      });
+    } else {
+      setContents((prevContents) => [...prevContents, newContent]);
+      setContentAddFeedback({
+        type: "error",
+        text: "Backend'e kaydedilemedi, yerel olarak eklendi.",
+      });
+    }
+
+    setIsSavingContent(false);
 
     setForm({
       title: "",
@@ -424,14 +687,42 @@ function App() {
     };
   };
 
-  const addRecommendationToWatchLater = (recommendation) => {
+  const addRecommendationToWatchLater = async (recommendation) => {
+    if (isSavingContent) {
+      return;
+    }
+
     const newContent = buildWatchlistContent({
       title: recommendation.title,
       type: recommendation.type,
       minutesPerEpisode: recommendation.minutesPerEpisode,
     });
 
-    setContents([...contents, newContent]);
+    setIsSavingContent(true);
+    setContentAddFeedback(null);
+
+    const result = await saveContentToBackend(newContent, newContent.status);
+
+    if (result.status === "success") {
+      setContents((prevContents) => [...prevContents, result.content]);
+      setContentAddFeedback({
+        type: "success",
+        text: "İçerik izleyeceklerine eklendi.",
+      });
+    } else if (result.status === "duplicate") {
+      setContentAddFeedback({
+        type: "error",
+        text: "Bu içerik zaten kütüphanende var.",
+      });
+    } else {
+      setContents((prevContents) => [...prevContents, newContent]);
+      setContentAddFeedback({
+        type: "error",
+        text: "Backend'e kaydedilemedi, yerel olarak eklendi.",
+      });
+    }
+
+    setIsSavingContent(false);
   };
 
   // Keşfet öğesine karşılık gelen kayıtlı content'i (varsa) bulur.
@@ -481,31 +772,104 @@ function App() {
     );
   };
 
-  const addDiscoveryItemToWatchlist = (item, status = "İzleyecekler") => {
+  // Keşfet'ten içerik eklemeyi (+ butonu, İzleyeceğim/İzliyorum/İzledim
+  // seçimleri) ortak saveContentToBackend akışına bağlar. Backend'e
+  // ulaşılamazsa veya beklenmedik bir hata olursa, veri kaybı yaşanmaması
+  // için içerik yine de localStorage'a (eski yöntemle) eklenir ve kullanıcı
+  // bilgilendirilir.
+  const addDiscoveryItemToWatchlist = async (item, status = "İzleyecekler") => {
     const existingContent = findDiscoveryContent(item);
 
-    if (existingContent) {
+    // Bu içerik zaten backend'e kaydedilmişse (backendUserContentId varsa),
+    // tekrar API'ye gitmeye gerek yok — sadece durumunu güncelle.
+    if (existingContent && existingContent.backendUserContentId) {
       setContentStatus(existingContent.id, status);
+      setContentAddFeedback({
+        type: "success",
+        text: "İçerik zaten kütüphanende, durumu güncellendi.",
+      });
       return;
     }
 
-    const newContent = buildWatchlistContent({
-      title: item.title,
-      type: item.type,
-      minutesPerEpisode: item.minutesPerEpisode,
-      source: "tmdb",
-      sourceId: item.id,
-      mediaType: item.mediaType,
-      posterUrl: item.posterUrl,
-      genre: item.genre,
-      overview: item.overview,
-      estimatedLevel: item.estimatedLevel,
-      tmdbRating: item.rating,
-      releaseYear: item.year,
-      status,
-    });
+    if (isSavingContent) {
+      return;
+    }
 
-    setContents([...contents, newContent]);
+    // existingContent burada backend'e hiç yazılmamış eski bir localStorage
+    // kaydı olabilir (backendUserContentId yok) — bu durumda onu olduğu gibi
+    // backend'e kaydetmeyi dener, yoksa yeni bir local content inşa eder.
+    const localContent =
+      existingContent ||
+      buildWatchlistContent({
+        title: item.title,
+        type: item.type,
+        minutesPerEpisode: item.minutesPerEpisode,
+        source: "tmdb",
+        sourceId: item.id,
+        mediaType: item.mediaType,
+        posterUrl: item.posterUrl,
+        genre: item.genre,
+        overview: item.overview,
+        estimatedLevel: item.estimatedLevel,
+        tmdbRating: item.rating,
+        releaseYear: item.year,
+        status,
+      });
+
+    setIsSavingContent(true);
+    setContentAddFeedback(null);
+
+    const result = await saveContentToBackend(localContent, status);
+
+    if (result.status === "success") {
+      const mergedContent = {
+        ...result.content,
+        source: "tmdb",
+        sourceId: item.id,
+        genre: item.genre || localContent.genre || "",
+        estimatedLevel: item.estimatedLevel || localContent.estimatedLevel || "",
+        releaseYear: item.year || localContent.releaseYear || null,
+      };
+
+      if (existingContent) {
+        // Eski local-only kaydı yeni bir kart eklemek yerine backend
+        // bilgileriyle günceller, frontend id'sini korur.
+        setContents((prevContents) =>
+          prevContents.map((content) =>
+            content.id === existingContent.id
+              ? { ...mergedContent, id: content.id }
+              : content
+          )
+        );
+      } else {
+        setContents((prevContents) => [...prevContents, mergedContent]);
+      }
+
+      setContentAddFeedback({
+        type: "success",
+        text: "İçerik kütüphanene eklendi.",
+      });
+    } else if (result.status === "duplicate") {
+      setContentAddFeedback({
+        type: "error",
+        text: "Bu içerik zaten kütüphanende var.",
+      });
+    } else if (!existingContent) {
+      setContents((prevContents) => [...prevContents, localContent]);
+      setContentAddFeedback({
+        type: "error",
+        text: "Backend'e kaydedilemedi, yerel olarak eklendi.",
+      });
+    } else {
+      // existingContent zaten localStorage'da duruyor, tekrar eklemeye
+      // gerek yok — sadece hatayı bildir.
+      setContentAddFeedback({
+        type: "error",
+        text: "Backend'e kaydedilemedi, yerel olarak eklendi.",
+      });
+    }
+
+    setIsSavingContent(false);
   };
 
   const computeAverageRuntime = (seasonsList, fallback) => {
@@ -1484,6 +1848,20 @@ function App() {
           <h1>Comprehensible Input Tracker</h1>
           <p>İngilizce içerik izleme sürecini ve ilerlemeni tek yerden takip et.</p>
         </header>
+
+        {isContentsLoading && (
+          <p className="empty-text">İçerikler sunucudan yükleniyor...</p>
+        )}
+
+        {contentsError && (
+          <p className="empty-text">
+            Sunucudan veri alınamadı, yerel kayıtların gösteriliyor. ({contentsError})
+          </p>
+        )}
+
+        {contentAddFeedback && (
+          <p className="empty-text">{contentAddFeedback.text}</p>
+        )}
 
         {activePage === "dashboard" && renderDashboardPage()}
 
