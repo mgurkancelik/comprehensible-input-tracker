@@ -7,6 +7,7 @@ import ContentDetailModal from "./components/ContentDetailModal";
 import LibraryPage from "./components/LibraryPage";
 import NotesModal from "./components/NotesModal";
 import InputGoalCard from "./components/InputGoalCard";
+import AuthScreen from "./components/AuthScreen";
 import {
   getTotalInputMinutes,
   getMinutesInRange,
@@ -22,14 +23,14 @@ import {
   deleteUserContent,
 } from "./services/userContents";
 import { getContents, createContent } from "./services/contents";
+import { registerUser, loginUser, getCurrentUser } from "./services/auth";
 import "./App.css";
 
 const THEME_STORAGE_KEY = "ciTrackerTheme";
 const GOAL_STORAGE_KEY = "inputGoalTargetHours";
 const VALID_GOAL_HOURS = [100, 250, 500, 1000];
-
-// TODO: login sistemi gelince gerçek userId kullanılacak.
-const TEMP_USER_ID = "6a4fa8df2d09d6bce7c932ca";
+const AUTH_TOKEN_STORAGE_KEY = "ciAuthToken";
+const AUTH_USER_STORAGE_KEY = "ciAuthUser";
 
 // Backend'deki UserContent.status enum'u (İngilizce) ile frontend'in
 // beklediği status metinleri (Türkçe) farklı olduğu için köprü kurulur.
@@ -178,7 +179,7 @@ function mapUserContentToFrontendContent(userContent) {
 // kullanıcı için userContent kaydı açar. Sonucu { status, content|message }
 // şeklinde döner; state güncellemesini çağıran fonksiyon kendi ihtiyacına
 // göre yapar (yeni kart ekleme veya mevcut legacy kaydı güncelleme gibi).
-async function saveContentToBackend(localContent, targetStatus) {
+async function saveContentToBackend(localContent, targetStatus, userId) {
   try {
     const backendContent = await findOrCreateBackendContentFromLocal(localContent);
 
@@ -191,7 +192,7 @@ async function saveContentToBackend(localContent, targetStatus) {
         : 0;
 
     const createResponse = await createUserContent({
-      userId: TEMP_USER_ID,
+      userId,
       contentId: backendContent._id,
       status: FRONTEND_STATUS_TO_API_STATUS[targetStatus] || "watchlist",
       watchedMinutes,
@@ -265,6 +266,115 @@ const STATUS_META = {
 };
 
 function App() {
+  const [authUser, setAuthUser] = useState(null);
+  const [authToken, setAuthToken] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
+  const [authMode, setAuthMode] = useState("login");
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
+
+  const activeUserId = authUser?._id || authUser?.id || null;
+
+  // Sayfa açılışında localStorage'daki token'ı /api/auth/me ile doğrular.
+  // Geçerliyse authUser set edilir; geçersizse (veya yoksa) auth temizlenir
+  // ve kullanıcı giriş ekranını görür. contents state'i her iki durumda da
+  // önceki oturumdan kalma veriyle karışmasın diye sıfırlanır — asıl veri
+  // activeUserId'ye bağlı GET effect'i ile gelecek.
+  useEffect(() => {
+    let isMounted = true;
+
+    async function verifyStoredToken() {
+      const storedToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+
+      if (!storedToken) {
+        setAuthLoading(false);
+        return;
+      }
+
+      try {
+        const response = await getCurrentUser(storedToken);
+
+        if (!isMounted) {
+          return;
+        }
+
+        setContents([]);
+        setAuthUser(response.user);
+        setAuthToken(storedToken);
+        localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(response.user));
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+
+        localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+        localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+        setContents([]);
+      } finally {
+        if (isMounted) {
+          setAuthLoading(false);
+        }
+      }
+    }
+
+    verifyStoredToken();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleLogin = async ({ email, password }) => {
+    setIsAuthSubmitting(true);
+    setAuthError(null);
+
+    try {
+      const response = await loginUser({ email, password });
+
+      setContents([]);
+      setAuthUser(response.user);
+      setAuthToken(response.token);
+      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, response.token);
+      localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(response.user));
+    } catch (error) {
+      setAuthError(error.message);
+    } finally {
+      setIsAuthSubmitting(false);
+    }
+  };
+
+  const handleRegister = async ({ name, email, password }) => {
+    setIsAuthSubmitting(true);
+    setAuthError(null);
+
+    try {
+      const response = await registerUser({ name, email, password });
+
+      setContents([]);
+      setAuthUser(response.user);
+      setAuthToken(response.token);
+      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, response.token);
+      localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(response.user));
+    } catch (error) {
+      setAuthError(error.message);
+    } finally {
+      setIsAuthSubmitting(false);
+    }
+  };
+
+  const handleAuthModeChange = (nextMode) => {
+    setAuthMode(nextMode);
+    setAuthError(null);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    setAuthUser(null);
+    setAuthToken(null);
+    setContents([]);
+  };
+
   const [activePage, setActivePage] = useState("dashboard");
 
   const [theme, setTheme] = useState(() => {
@@ -347,12 +457,17 @@ function App() {
   // aksiyonlarında aynı içerik için üst üste PUT gitmesini engeller.
   const [updatingContentId, setUpdatingContentId] = useState(null);
 
-  // Sayfa açılışında MongoDB backend'den kullanıcının içeriklerini çekmeyi
-  // dener. Başarılı olursa ve gelen liste doluysa contents state'i API
-  // verisiyle değiştirilir. API hata verirse veya boş dönerse, localStorage'dan
-  // yüklenmiş olan mevcut contents state'ine hiç dokunulmaz — kullanıcı veri
-  // kaybetmez.
+  // Giriş yapan kullanıcı belli olunca (activeUserId) MongoDB backend'den
+  // onun içeriklerini çekmeyi dener. Başarılı olursa ve gelen liste doluysa
+  // contents state'i API verisiyle değiştirilir. API hata verirse veya boş
+  // dönerse, localStorage'dan yüklenmiş olan mevcut contents state'ine hiç
+  // dokunulmaz — kullanıcı veri kaybetmez. activeUserId yoksa (henüz giriş
+  // yapılmamışsa) hiç istek atılmaz.
   useEffect(() => {
+    if (!activeUserId) {
+      return;
+    }
+
     let isMounted = true;
 
     async function loadUserContentsFromApi() {
@@ -360,7 +475,7 @@ function App() {
       setContentsError(null);
 
       try {
-        const response = await getUserContents(TEMP_USER_ID);
+        const response = await getUserContents(activeUserId);
         const userContents = response?.data || [];
 
         if (!isMounted) {
@@ -388,7 +503,7 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [activeUserId]);
 
   const toSafeNumber = (value) => {
     const numberValue = Number(value);
@@ -515,6 +630,14 @@ function App() {
       return;
     }
 
+    if (!activeUserId) {
+      setContentAddFeedback({
+        type: "error",
+        text: "Önce giriş yapmalısın.",
+      });
+      return;
+    }
+
     const totalEpisodes = toSafeNumber(form.totalEpisodes);
 
     const watchedEpisodes = Math.min(
@@ -565,7 +688,11 @@ function App() {
     setIsSavingContent(true);
     setContentAddFeedback(null);
 
-    const result = await saveContentToBackend(newContent, newContent.status);
+    const result = await saveContentToBackend(
+      newContent,
+      newContent.status,
+      activeUserId
+    );
 
     if (result.status === "success") {
       setContents((prevContents) => [...prevContents, result.content]);
@@ -832,6 +959,14 @@ function App() {
       return;
     }
 
+    if (!activeUserId) {
+      setContentAddFeedback({
+        type: "error",
+        text: "Önce giriş yapmalısın.",
+      });
+      return;
+    }
+
     const newContent = buildWatchlistContent({
       title: recommendation.title,
       type: recommendation.type,
@@ -841,7 +976,11 @@ function App() {
     setIsSavingContent(true);
     setContentAddFeedback(null);
 
-    const result = await saveContentToBackend(newContent, newContent.status);
+    const result = await saveContentToBackend(
+      newContent,
+      newContent.status,
+      activeUserId
+    );
 
     if (result.status === "success") {
       setContents((prevContents) => [...prevContents, result.content]);
@@ -979,6 +1118,14 @@ function App() {
       return;
     }
 
+    if (!activeUserId) {
+      setContentAddFeedback({
+        type: "error",
+        text: "Önce giriş yapmalısın.",
+      });
+      return;
+    }
+
     // existingContent burada backend'e hiç yazılmamış eski bir localStorage
     // kaydı olabilir (backendUserContentId yok) — bu durumda onu olduğu gibi
     // backend'e kaydetmeyi dener, yoksa yeni bir local content inşa eder.
@@ -1003,7 +1150,7 @@ function App() {
     setIsSavingContent(true);
     setContentAddFeedback(null);
 
-    const result = await saveContentToBackend(localContent, status);
+    const result = await saveContentToBackend(localContent, status, activeUserId);
 
     if (result.status === "success") {
       const mergedContent = {
@@ -2068,6 +2215,32 @@ function App() {
     );
   };
 
+  if (authLoading) {
+    return (
+      <div>
+        <main className="app">
+          <header className="header">
+            <h1>Comprehensible Input Tracker</h1>
+          </header>
+          <p className="empty-text">Oturum kontrol ediliyor...</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return (
+      <AuthScreen
+        mode={authMode}
+        onModeChange={handleAuthModeChange}
+        onLogin={handleLogin}
+        onRegister={handleRegister}
+        isLoading={isAuthSubmitting}
+        error={authError}
+      />
+    );
+  }
+
   return (
     <div>
       <nav className="top-nav">
@@ -2122,6 +2295,10 @@ function App() {
           title={theme === "dark" ? "Açık temaya geç" : "Koyu temaya geç"}
         >
           <span aria-hidden="true">{theme === "dark" ? "☀️" : "🌙"}</span>
+        </button>
+
+        <button type="button" onClick={handleLogout} title="Çıkış yap">
+          Çıkış ({authUser.name || authUser.email})
         </button>
       </nav>
 

@@ -7,6 +7,7 @@ const connectDB = require("./config/db");
 const contentsRoutes = require("./routes/contents");
 const usersRoutes = require("./routes/users");
 const userContentsRoutes = require("./routes/userContents");
+const authRoutes = require("./routes/auth");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -23,6 +24,7 @@ app.get("/api/health", (req, res) => {
 app.use("/api/contents", contentsRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/user-contents", userContentsRoutes);
+app.use("/api/auth", authRoutes);
 
 app.get("/api/db-test", (req, res) => {
   const readyState = mongoose.connection.readyState;

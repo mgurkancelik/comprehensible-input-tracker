@@ -10,6 +10,11 @@ const userSchema = new mongoose.Schema(
       trim: true,
       lowercase: true,
     },
+    passwordHash: {
+      type: String,
+      required: [true, "passwordHash zorunludur"],
+      select: false,
+    },
   },
   {
     timestamps: true,
