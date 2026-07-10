@@ -31,6 +31,9 @@ const GOAL_STORAGE_KEY = "inputGoalTargetHours";
 const VALID_GOAL_HOURS = [100, 250, 500, 1000];
 const AUTH_TOKEN_STORAGE_KEY = "ciAuthToken";
 const AUTH_USER_STORAGE_KEY = "ciAuthUser";
+// Artık kullanılmıyor — MongoDB tek veri kaynağı. Eski tarayıcılarda kalmış
+// olabilecek içerik cache'ini temizlemek için anahtarını burada tutuyoruz.
+const LEGACY_CONTENTS_STORAGE_KEY = "inputContentsV5";
 
 // Backend'deki UserContent.status enum'u (İngilizce) ile frontend'in
 // beklediği status metinleri (Türkçe) farklı olduğu için köprü kurulur.
@@ -285,6 +288,10 @@ function App() {
   useEffect(() => {
     let isMounted = true;
 
+    // Eski sürümlerden kalmış olabilecek içerik cache'i artık hiç
+    // kullanılmıyor; bir daha okunmasın diye uygulama açılışında temizlenir.
+    localStorage.removeItem(LEGACY_CONTENTS_STORAGE_KEY);
+
     async function verifyStoredToken() {
       const storedToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
 
@@ -372,6 +379,7 @@ function App() {
   const handleLogout = () => {
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_CONTENTS_STORAGE_KEY);
     setAuthUser(null);
     setAuthToken(null);
     setContents([]);
@@ -401,15 +409,10 @@ function App() {
     localStorage.setItem(GOAL_STORAGE_KEY, String(goalTargetHours));
   }, [goalTargetHours]);
 
-  const [contents, setContents] = useState(() => {
-    const savedContents = localStorage.getItem("inputContentsV5");
-
-    if (savedContents) {
-      return JSON.parse(savedContents);
-    }
-
-    return [];
-  });
+  // MongoDB, giriş yapan kullanıcının içerikleri için tek kaynak — başlangıç
+  // değeri her zaman boş dizi. Gerçek veri, activeUserId/authToken belli
+  // olunca aşağıdaki GET effect'i ile MongoDB'den gelir.
+  const [contents, setContents] = useState([]);
 
   const [form, setForm] = useState({
     title: "",
@@ -438,10 +441,6 @@ function App() {
     setShowSearchFeedback(null);
   };
 
-  useEffect(() => {
-    localStorage.setItem("inputContentsV5", JSON.stringify(contents));
-  }, [contents]);
-
   const [isContentsLoading, setIsContentsLoading] = useState(false);
   const [contentsError, setContentsError] = useState(null);
 
@@ -459,12 +458,12 @@ function App() {
   // aksiyonlarında aynı içerik için üst üste PUT gitmesini engeller.
   const [updatingContentId, setUpdatingContentId] = useState(null);
 
-  // Giriş yapan kullanıcı belli olunca (activeUserId) MongoDB backend'den
-  // onun içeriklerini çekmeyi dener. Başarılı olursa ve gelen liste doluysa
-  // contents state'i API verisiyle değiştirilir. API hata verirse veya boş
-  // dönerse, localStorage'dan yüklenmiş olan mevcut contents state'ine hiç
-  // dokunulmaz — kullanıcı veri kaybetmez. activeUserId yoksa (henüz giriş
-  // yapılmamışsa) hiç istek atılmaz.
+  // Giriş yapan kullanıcı belli olunca (activeUserId + authToken) MongoDB
+  // backend'den onun içeriklerini çeker. MongoDB, bu kullanıcı için tek veri
+  // kaynağıdır: response başarılıysa contents state'i her zaman gelen
+  // listeyle değiştirilir (liste boşsa contents da boş kalır) — önceki bir
+  // kullanıcıdan veya oturumdan kalma veri asla ekranda kalmaz. activeUserId
+  // veya authToken yoksa (giriş yapılmamışsa) hiç istek atılmaz.
   useEffect(() => {
     if (!activeUserId || !authToken) {
       return;
@@ -484,9 +483,7 @@ function App() {
           return;
         }
 
-        if (userContents.length > 0) {
-          setContents(userContents.map(mapUserContentToFrontendContent));
-        }
+        setContents(userContents.map(mapUserContentToFrontendContent));
       } catch (error) {
         if (!isMounted) {
           return;
