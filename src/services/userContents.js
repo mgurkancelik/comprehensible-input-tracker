@@ -1,11 +1,11 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
-async function apiFetch(endpoint, options = {}) {
+async function apiFetch(endpoint, { headers, ...options } = {}) {
   let response;
 
   try {
     response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...headers },
       ...options,
     });
   } catch {
@@ -25,28 +25,36 @@ async function apiFetch(endpoint, options = {}) {
   return data;
 }
 
-export function getUserContents(userId) {
-  const query = userId ? `?userId=${encodeURIComponent(userId)}` : "";
-  return apiFetch(`/user-contents${query}`);
+function authHeaders(token) {
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export function createUserContent(payload) {
+export function getUserContents(token) {
+  return apiFetch("/user-contents", {
+    headers: authHeaders(token),
+  });
+}
+
+export function createUserContent(payload, token) {
   return apiFetch("/user-contents", {
     method: "POST",
     body: JSON.stringify(payload),
+    headers: authHeaders(token),
   });
 }
 
-export function updateUserContent(id, payload) {
+export function updateUserContent(id, payload, token) {
   return apiFetch(`/user-contents/${id}`, {
     method: "PUT",
     body: JSON.stringify(payload),
+    headers: authHeaders(token),
   });
 }
 
-export function deleteUserContent(id) {
+export function deleteUserContent(id, token) {
   return apiFetch(`/user-contents/${id}`, {
     method: "DELETE",
+    headers: authHeaders(token),
   });
 }
 

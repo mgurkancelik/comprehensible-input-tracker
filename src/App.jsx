@@ -179,7 +179,7 @@ function mapUserContentToFrontendContent(userContent) {
 // kullanıcı için userContent kaydı açar. Sonucu { status, content|message }
 // şeklinde döner; state güncellemesini çağıran fonksiyon kendi ihtiyacına
 // göre yapar (yeni kart ekleme veya mevcut legacy kaydı güncelleme gibi).
-async function saveContentToBackend(localContent, targetStatus, userId) {
+async function saveContentToBackend(localContent, targetStatus, token) {
   try {
     const backendContent = await findOrCreateBackendContentFromLocal(localContent);
 
@@ -191,18 +191,20 @@ async function saveContentToBackend(localContent, targetStatus, userId) {
         ? Math.min(100, Math.round((watchedEpisodes / totalEpisodes) * 100))
         : 0;
 
-    const createResponse = await createUserContent({
-      userId,
-      contentId: backendContent._id,
-      status: FRONTEND_STATUS_TO_API_STATUS[targetStatus] || "watchlist",
-      watchedMinutes,
-      watchedPercentage,
-      watchedEpisodes,
-      notes: localContent.notes || "",
-      watchLogs: localContent.watchLogs || [],
-      startDate: localContent.startDate || "",
-      finishDate: localContent.completedDate || localContent.finishDate || "",
-    });
+    const createResponse = await createUserContent(
+      {
+        contentId: backendContent._id,
+        status: FRONTEND_STATUS_TO_API_STATUS[targetStatus] || "watchlist",
+        watchedMinutes,
+        watchedPercentage,
+        watchedEpisodes,
+        notes: localContent.notes || "",
+        watchLogs: localContent.watchLogs || [],
+        startDate: localContent.startDate || "",
+        finishDate: localContent.completedDate || localContent.finishDate || "",
+      },
+      token
+    );
 
     const mappedContent = mapUserContentToFrontendContent({
       ...createResponse.data,
@@ -230,13 +232,13 @@ async function saveContentToBackend(localContent, targetStatus, userId) {
 // - "success": PUT başarılı.
 // - "not_found": backend 404 döndü (kayıt backend'de yok).
 // - "error": başka bir hata (network, 400, 500 vb.).
-async function saveUserContentUpdate(content, apiPayload) {
+async function saveUserContentUpdate(content, apiPayload, token) {
   if (!content || !content.backendUserContentId) {
     return { status: "local" };
   }
 
   try {
-    await updateUserContent(content.backendUserContentId, apiPayload);
+    await updateUserContent(content.backendUserContentId, apiPayload, token);
     return { status: "success" };
   } catch (error) {
     if (error.status === 404) {
@@ -464,7 +466,7 @@ function App() {
   // dokunulmaz — kullanıcı veri kaybetmez. activeUserId yoksa (henüz giriş
   // yapılmamışsa) hiç istek atılmaz.
   useEffect(() => {
-    if (!activeUserId) {
+    if (!activeUserId || !authToken) {
       return;
     }
 
@@ -475,7 +477,7 @@ function App() {
       setContentsError(null);
 
       try {
-        const response = await getUserContents(activeUserId);
+        const response = await getUserContents(authToken);
         const userContents = response?.data || [];
 
         if (!isMounted) {
@@ -503,7 +505,7 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, [activeUserId]);
+  }, [activeUserId, authToken]);
 
   const toSafeNumber = (value) => {
     const numberValue = Number(value);
@@ -691,7 +693,7 @@ function App() {
     const result = await saveContentToBackend(
       newContent,
       newContent.status,
-      activeUserId
+      authToken
     );
 
     if (result.status === "success") {
@@ -764,7 +766,7 @@ function App() {
     setContentAddFeedback(null);
 
     try {
-      await deleteUserContent(item.backendUserContentId);
+      await deleteUserContent(item.backendUserContentId, authToken);
 
       setContents((prevContents) =>
         prevContents.filter((content) => content.id !== id)
@@ -798,7 +800,7 @@ function App() {
   // güncellendiği için "success"/"local" durumlarında ekstra bir şey yapmaz —
   // bu, sık tıklanan bölüm takibi aksiyonları için gereksiz mesaj spamini önler.
   function syncSummaryToBackendInBackground(content, apiPayload) {
-    saveUserContentUpdate(content, apiPayload).then((result) => {
+    saveUserContentUpdate(content, apiPayload, authToken).then((result) => {
       if (result.status === "error") {
         setContentAddFeedback({
           type: "error",
@@ -979,7 +981,7 @@ function App() {
     const result = await saveContentToBackend(
       newContent,
       newContent.status,
-      activeUserId
+      authToken
     );
 
     if (result.status === "success") {
@@ -1058,9 +1060,11 @@ function App() {
     setUpdatingContentId(contentId);
     setContentAddFeedback(null);
 
-    const result = await saveUserContentUpdate(content, {
-      status: FRONTEND_STATUS_TO_API_STATUS[status] || "watchlist",
-    });
+    const result = await saveUserContentUpdate(
+      content,
+      { status: FRONTEND_STATUS_TO_API_STATUS[status] || "watchlist" },
+      authToken
+    );
 
     if (result.status === "success" || result.status === "local") {
       setContents((prevContents) =>
@@ -1150,7 +1154,7 @@ function App() {
     setIsSavingContent(true);
     setContentAddFeedback(null);
 
-    const result = await saveContentToBackend(localContent, status, activeUserId);
+    const result = await saveContentToBackend(localContent, status, authToken);
 
     if (result.status === "success") {
       const mergedContent = {
@@ -1528,7 +1532,7 @@ function App() {
     setUpdatingContentId(contentId);
     setContentAddFeedback(null);
 
-    const result = await saveUserContentUpdate(content, { notes });
+    const result = await saveUserContentUpdate(content, { notes }, authToken);
 
     if (result.status === "success" || result.status === "local") {
       setContents((prevContents) =>

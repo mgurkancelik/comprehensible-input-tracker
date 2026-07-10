@@ -24,10 +24,7 @@ function handleError(res, error, fallbackMessage) {
 
 async function getUserContents(req, res) {
   try {
-    const { userId } = req.query;
-    const filter = userId ? { userId } : {};
-
-    const userContents = await UserContent.find(filter)
+    const userContents = await UserContent.find({ userId: req.userId })
       .populate("userId")
       .populate("contentId")
       .sort({ createdAt: -1 });
@@ -40,12 +37,17 @@ async function getUserContents(req, res) {
 
 async function createUserContent(req, res) {
   try {
-    const { userId, contentId } = req.body;
+    const userId = req.userId;
+    const {
+  contentId,
+  userId: _ignoredUserId,
+  ...rest
+} = req.body || {};
 
-    if (!userId || !contentId) {
+    if (!contentId) {
       return res
         .status(400)
-        .json({ ok: false, message: "userId ve contentId zorunludur." });
+        .json({ ok: false, message: "contentId zorunludur." });
     }
 
     const user = await User.findById(userId);
@@ -66,7 +68,7 @@ async function createUserContent(req, res) {
       });
     }
 
-    const created = await UserContent.create(req.body);
+    const created = await UserContent.create({ ...rest, userId, contentId });
     res.status(201).json({ ok: true, data: created });
   } catch (error) {
     handleError(res, error, "Failed to create user content");
@@ -76,11 +78,16 @@ async function createUserContent(req, res) {
 async function updateUserContent(req, res) {
   try {
     const { id } = req.params;
+    const {
+  userId: _ignoredUserId,
+  ...updates
+} = req.body || {};
 
-    const updated = await UserContent.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true,
-    });
+    const updated = await UserContent.findOneAndUpdate(
+      { _id: id, userId: req.userId },
+      updates,
+      { new: true, runValidators: true }
+    );
 
     if (!updated) {
       return res.status(404).json({ ok: false, message: "Kayıt bulunamadı." });
@@ -96,7 +103,10 @@ async function deleteUserContent(req, res) {
   try {
     const { id } = req.params;
 
-    const deleted = await UserContent.findByIdAndDelete(id);
+    const deleted = await UserContent.findOneAndDelete({
+      _id: id,
+      userId: req.userId,
+    });
 
     if (!deleted) {
       return res.status(404).json({ ok: false, message: "Kayıt bulunamadı." });
