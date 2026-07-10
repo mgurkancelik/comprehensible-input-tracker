@@ -8,6 +8,7 @@ import LibraryPage from "./components/LibraryPage";
 import NotesModal from "./components/NotesModal";
 import InputGoalCard from "./components/InputGoalCard";
 import AuthScreen from "./components/AuthScreen";
+import LoginRequiredState from "./components/LoginRequiredState";
 import {
   getTotalInputMinutes,
   getMinutesInRange,
@@ -277,8 +278,62 @@ function App() {
   const [authError, setAuthError] = useState(null);
   const [authMode, setAuthMode] = useState("login");
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const activeUserId = authUser?._id || authUser?.id || null;
+
+  // Misafir görünümünde kişisel bir aksiyon (içerik ekleme, durum/not
+  // güncelleme vb.) tetiklendiğinde çağrılır. Giriş yapılmamışsa backend'e
+  // hiç istek atmadan auth modalını açar ve false döner — çağıran fonksiyon
+  // bu false'u görüp işlemi burada durdurur. Giriş yapılmışsa true döner ve
+  // mevcut akış olduğu gibi devam eder.
+  const requireAuthAction = () => {
+    if (!authUser || !authToken) {
+      openAuthModal("login");
+      return false;
+    }
+
+    return true;
+  };
+
+  const openAuthModal = (mode = "login") => {
+    setAuthMode(mode);
+    setAuthError(null);
+    setShowAuthModal(true);
+  };
+
+  const closeAuthModal = () => {
+    setShowAuthModal(false);
+    setAuthError(null);
+  };
+
+  const handleAuthModalOverlayClick = (event) => {
+    if (event.target === event.currentTarget) {
+      closeAuthModal();
+    }
+  };
+
+  // Diğer modallerle (NotesModal, ContentDetailModal) aynı davranış: Escape
+  // ile kapanır, açıkken arka plan kaydırılmaz.
+  useEffect(() => {
+    if (!showAuthModal) {
+      return;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        closeAuthModal();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "";
+    };
+  }, [showAuthModal]);
 
   // Sayfa açılışında localStorage'daki token'ı /api/auth/me ile doğrular.
   // Geçerliyse authUser set edilir; geçersizse (veya yoksa) auth temizlenir
@@ -345,6 +400,7 @@ function App() {
       setAuthToken(response.token);
       localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, response.token);
       localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(response.user));
+      setShowAuthModal(false);
     } catch (error) {
       setAuthError(error.message);
     } finally {
@@ -364,6 +420,7 @@ function App() {
       setAuthToken(response.token);
       localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, response.token);
       localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(response.user));
+      setShowAuthModal(false);
     } catch (error) {
       setAuthError(error.message);
     } finally {
@@ -629,11 +686,7 @@ function App() {
       return;
     }
 
-    if (!activeUserId) {
-      setContentAddFeedback({
-        type: "error",
-        text: "Önce giriş yapmalısın.",
-      });
+    if (!requireAuthAction()) {
       return;
     }
 
@@ -958,11 +1011,7 @@ function App() {
       return;
     }
 
-    if (!activeUserId) {
-      setContentAddFeedback({
-        type: "error",
-        text: "Önce giriş yapmalısın.",
-      });
+    if (!requireAuthAction()) {
       return;
     }
 
@@ -1119,11 +1168,7 @@ function App() {
       return;
     }
 
-    if (!activeUserId) {
-      setContentAddFeedback({
-        type: "error",
-        text: "Önce giriş yapmalısın.",
-      });
+    if (!requireAuthAction()) {
       return;
     }
 
@@ -1742,6 +1787,15 @@ function App() {
   };
 
   const renderTrackingPage = () => {
+    if (!authUser) {
+      return (
+        <LoginRequiredState
+          message="İlerlemenizi ve takip çizelgenizi görmek için giriş yapın."
+          onLoginClick={() => openAuthModal("login")}
+        />
+      );
+    }
+
     const dailyData = getDailyAnalytics();
     const monthlyData = getMonthlyAnalytics();
     const inputRecordCounts = getInputRecordCounts(contents);
@@ -2134,6 +2188,15 @@ function App() {
   };
 
   const renderDashboardPage = () => {
+    if (!authUser) {
+      return (
+        <LoginRequiredState
+          message="İçeriklerinizi takip etmek ve ilerlemenizi kaydetmek için giriş yapın."
+          onLoginClick={() => openAuthModal("login")}
+        />
+      );
+    }
+
     const last14DaysMinutes = getLast14DaysMinutes();
     const hasRecentMomentum = last14DaysMinutes > 0;
 
@@ -2229,19 +2292,6 @@ function App() {
     );
   }
 
-  if (!authUser) {
-    return (
-      <AuthScreen
-        mode={authMode}
-        onModeChange={handleAuthModeChange}
-        onLogin={handleLogin}
-        onRegister={handleRegister}
-        isLoading={isAuthSubmitting}
-        error={authError}
-      />
-    );
-  }
-
   return (
     <div>
       <nav className="top-nav">
@@ -2298,9 +2348,19 @@ function App() {
           <span aria-hidden="true">{theme === "dark" ? "☀️" : "🌙"}</span>
         </button>
 
-        <button type="button" onClick={handleLogout} title="Çıkış yap">
-          Çıkış ({authUser.name || authUser.email})
-        </button>
+        {authUser ? (
+          <button type="button" onClick={handleLogout} title="Çıkış yap">
+            Çıkış ({authUser.name || authUser.email})
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="nav-auth-btn"
+            onClick={() => openAuthModal("login")}
+          >
+            Giriş Yap / Hesap Oluştur
+          </button>
+        )}
       </nav>
 
       <main className="app">
@@ -2337,18 +2397,24 @@ function App() {
           />
         )}
 
-        {activePage === "library" && (
-          <LibraryPage
-            searchText={searchText}
-            setSearchText={setSearchText}
-            selectedType={selectedType}
-            setSelectedType={setSelectedType}
-            watchLaterList={watchLaterList}
-            watchingList={watchingList}
-            completedList={completedList}
-            renderContentCard={renderContentCard}
-          />
-        )}
+        {activePage === "library" &&
+          (authUser ? (
+            <LibraryPage
+              searchText={searchText}
+              setSearchText={setSearchText}
+              selectedType={selectedType}
+              setSelectedType={setSelectedType}
+              watchLaterList={watchLaterList}
+              watchingList={watchingList}
+              completedList={completedList}
+              renderContentCard={renderContentCard}
+            />
+          ) : (
+            <LoginRequiredState
+              message="Kütüphaneni görmek için giriş yapın."
+              onLoginClick={() => openAuthModal("login")}
+            />
+          ))}
 
         {activePage === "tracking" && renderTrackingPage()}
 
@@ -2410,6 +2476,35 @@ function App() {
           onDelete={() => updateContentNotes(notesModalContent.id, "")}
           onClose={() => setNotesModalContentId(null)}
         />
+      )}
+
+      {showAuthModal && (
+        <div className="modal-overlay" onClick={handleAuthModalOverlayClick}>
+          <div
+            className="modal-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="auth-modal-title"
+          >
+            <button
+              type="button"
+              className="modal-close-btn"
+              onClick={closeAuthModal}
+              aria-label="Kapat"
+            >
+              ✕
+            </button>
+
+            <AuthScreen
+              mode={authMode}
+              onModeChange={handleAuthModeChange}
+              onLogin={handleLogin}
+              onRegister={handleRegister}
+              isLoading={isAuthSubmitting}
+              error={authError}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
