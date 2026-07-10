@@ -12,7 +12,27 @@ const authRoutes = require("./routes/auth");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+const devOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"];
+
+const envOrigins = (process.env.CORS_ORIGIN || process.env.CLIENT_URL || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const allowedOrigins = envOrigins.length > 0 ? [...envOrigins, ...devOrigins] : devOrigins;
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`CORS bu origin için izinli değil: ${origin}`));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 connectDB();
