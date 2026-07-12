@@ -17,7 +17,11 @@ const contentSchema = new mongoose.Schema(
     name: { type: String, trim: true },
     type: { type: String, trim: true },
     status: { type: String, trim: true },
-    totalEpisodes: { type: Number, default: 0 },
+    totalEpisodes: {
+      type: Number,
+      default: 0,
+      min: [0, "totalEpisodes negatif olamaz"],
+    },
     watchedEpisodes: { type: Number, default: 0 },
     episodeDuration: { type: Number, default: 0 },
     wordsPerEpisode: { type: Number, default: 0 },

@@ -691,6 +691,182 @@ button:disabled {
   opacity: 0.5;
 }
 
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.ui-button--md {
+  min-height: 48px;
+  padding: var(--space-3) var(--space-6);
+}
+
+.ui-button--lg {
+  min-height: 52px;
+  padding: var(--space-3) var(--space-7);
+  font-size: var(--font-size-lg);
+}
+
+.ui-button--full-width {
+  width: 100%;
+}
+
+.ui-button__icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ui-button--primary {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+.ui-button--primary:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 88%,
+    var(--md-sys-color-on-primary) 12%
+  );
+}
+
+.ui-button--secondary {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.ui-button--secondary:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.ui-button--danger {
+  background: var(--color-danger);
+  color: var(--md-sys-color-on-error);
+}
+
+.ui-button--danger:hover:not(:disabled) {
+  background: var(--color-danger-hover);
+}
+
+.ui-button--ghost {
+  background: transparent;
+  color: var(--color-primary);
+  border-color: transparent;
+}
+
+.ui-button--ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+}
+
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.ui-chip--sm {
+  min-height: 32px;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-xs);
+}
+
+.ui-chip--md {
+  min-height: 40px;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-sm);
+}
+
+.ui-chip--full-width {
+  width: 100%;
+}
+
+.ui-chip__icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ui-chip--filter {
+  background: var(--color-surface-alt);
+  color: var(--color-text-muted);
+}
+
+.ui-chip--filter:hover:not(:disabled) {
+  border-color: var(--color-text-muted);
+}
+
+.ui-chip--filter.ui-chip--selected {
+  background: var(--color-selected-bg);
+  color: var(--color-selected-text);
+  border-color: var(--color-primary);
+  font-weight: 700;
+}
+
+.ui-chip--status {
+  background: var(--color-surface-alt);
+  color: var(--color-text-muted);
+}
+
+.ui-chip--status:hover:not(:disabled) {
+  border-color: var(--color-text-muted);
+}
+
+.ui-chip--status.ui-chip--selected {
+  background: var(--color-selected-bg);
+  color: var(--color-selected-text);
+  border-color: var(--color-primary);
+}
+
+.ui-chip--milestone {
+  background: transparent;
+  border-color: var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.ui-chip--milestone:hover:not(.ui-chip--selected):not(.ui-chip--completed) {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+  border-color: var(--md-sys-color-outline);
+}
+
+.ui-chip--milestone.ui-chip--completed {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  border-color: transparent;
+}
+
+.ui-chip--milestone.ui-chip--selected {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: transparent;
+}
+
+.ui-chip--milestone.ui-chip--selected:hover {
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-primary-container) 85%,
+    var(--md-sys-color-on-primary-container) 15%
+  );
+  border-color: transparent;
+}
+
+.ui-chip--milestone.ui-chip--selected.ui-chip--completed {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: transparent;
+}
 
 .empty-text {
   color: var(--color-text-muted);
@@ -1500,6 +1676,12 @@ button:disabled {
   color: var(--color-text);
 }
 
+.ui-error-state__content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 @keyframes poster-skeleton-pulse {
   0%,
   100% {
@@ -1541,6 +1723,14 @@ button:disabled {
   position: relative;
   display: flex;
   flex-direction: column;
+}
+
+.modal-panel--sm {
+  max-width: 420px;
+}
+
+.modal-panel--md {
+  max-width: 560px;
 }
 
 .modal-close-btn {

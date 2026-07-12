@@ -1,3 +1,5 @@
+import Chip from "./ui/Chip";
+
 const MILESTONES = [
   { hours: 100, label: "İlk güçlü temel" },
   { hours: 250, label: "Düzenli input alışkanlığı" },
@@ -65,19 +67,17 @@ function InputGoalCard({ totalHours, targetHours, onSelectTarget }) {
           const isSelected = milestone.hours === selectedMilestone.hours;
 
           return (
-            <button
+            <Chip
               key={milestone.hours}
-              type="button"
-              className={`milestone-chip${
-                isCompleted ? " milestone-chip--done" : ""
-              }${isSelected ? " milestone-chip--active" : ""}`}
+              variant="milestone"
+              selected={isSelected}
+              className={isCompleted ? "ui-chip--completed" : ""}
               title={milestone.label}
-              aria-pressed={isSelected}
               onClick={() => onSelectTarget(milestone.hours)}
             >
               {isCompleted ? "✓ " : ""}
               {milestone.hours} saat
-            </button>
+            </Chip>
           );
         })}
       </div>

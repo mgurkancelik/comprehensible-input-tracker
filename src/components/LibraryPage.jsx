@@ -1,4 +1,5 @@
 import { useState } from "react";
+import EmptyState from "./ui/EmptyState";
 
 const STATUS_TABS = [
   { value: "İzleyecekler", label: "İzleyeceğim" },
@@ -87,7 +88,7 @@ function LibraryPage({
       </div>
 
       {activeList.length === 0 ? (
-        <p className="empty-text">{EMPTY_MESSAGES[activeTab]}</p>
+        <EmptyState description={EMPTY_MESSAGES[activeTab]} />
       ) : (
         activeList.map(renderContentCard)
       )}

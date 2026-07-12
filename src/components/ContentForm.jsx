@@ -9,6 +9,8 @@ function ContentForm({
   markAllInForm,
   showSearchFeedback,
 }) {
+  const isMovie = form.type === "Film";
+
   return (
     <section className="form-section">
       <div className="page-title">
@@ -155,43 +157,49 @@ function ContentForm({
             </legend>
 
             <div className="field-grid">
-              <label className="field" htmlFor="totalEpisodes">
-                <span className="field-label">Toplam bölüm</span>
-                <input
-                  id="totalEpisodes"
-                  name="totalEpisodes"
-                  value={form.totalEpisodes}
-                  onChange={handleChange}
-                  type="number"
-                  min="0"
-                  placeholder="Toplam bölüm"
-                />
-              </label>
+              {!isMovie && (
+                <label className="field" htmlFor="totalEpisodes">
+                  <span className="field-label">Toplam bölüm</span>
+                  <input
+                    id="totalEpisodes"
+                    name="totalEpisodes"
+                    value={form.totalEpisodes}
+                    onChange={handleChange}
+                    type="number"
+                    min="0"
+                    placeholder="Toplam bölüm"
+                  />
+                </label>
+              )}
 
-              <div className="field">
-                <div className="field-label-row">
-                  <span className="field-label">İzlenen bölüm</span>
-                  <button
-                    type="button"
-                    className="field-label-action"
-                    onClick={markAllInForm}
-                  >
-                    Tümünü seç
-                  </button>
+              {!isMovie && (
+                <div className="field">
+                  <div className="field-label-row">
+                    <span className="field-label">İzlenen bölüm</span>
+                    <button
+                      type="button"
+                      className="field-label-action"
+                      onClick={markAllInForm}
+                    >
+                      Tümünü seç
+                    </button>
+                  </div>
+                  <input
+                    id="watchedEpisodes"
+                    name="watchedEpisodes"
+                    value={form.watchedEpisodes}
+                    onChange={handleChange}
+                    type="number"
+                    min="0"
+                    placeholder="İzlenen bölüm"
+                  />
                 </div>
-                <input
-                  id="watchedEpisodes"
-                  name="watchedEpisodes"
-                  value={form.watchedEpisodes}
-                  onChange={handleChange}
-                  type="number"
-                  min="0"
-                  placeholder="İzlenen bölüm"
-                />
-              </div>
+              )}
 
               <label className="field" htmlFor="minutesPerEpisode">
-                <span className="field-label">Bölüm süresi (dk)</span>
+                <span className="field-label">
+                  {isMovie ? "Film süresi (dakika)" : "Bölüm süresi (dk)"}
+                </span>
                 <input
                   id="minutesPerEpisode"
                   name="minutesPerEpisode"

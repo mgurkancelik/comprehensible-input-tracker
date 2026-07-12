@@ -1,3 +1,5 @@
+import Button from "./ui/Button";
+
 function LoginRequiredState({
   message = "İçeriklerinizi takip etmek ve ilerlemenizi kaydetmek için giriş yapın.",
   onLoginClick,
@@ -7,9 +9,7 @@ function LoginRequiredState({
       <p>{message}</p>
 
       <div className="login-required-actions">
-        <button type="button" className="submit-btn" onClick={onLoginClick}>
-          Giriş Yap
-        </button>
+        <Button onClick={onLoginClick}>Giriş Yap</Button>
       </div>
     </section>
   );

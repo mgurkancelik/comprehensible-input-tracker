@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { recommendations } from "../data/recommendations";
+import EmptyState from "./ui/EmptyState";
 
 function RecommendationsPage({ addRecommendationToWatchLater }) {
   const [selectedLevel, setSelectedLevel] = useState("Tümü");
@@ -130,10 +131,7 @@ function RecommendationsPage({ addRecommendationToWatchLater }) {
       <h2>Öneri Listesi</h2>
 
       {filteredRecommendations.length === 0 ? (
-        <p className="empty-text">
-          Bu filtrelere uygun öneri bulunamadı. Farklı bir seviye veya tür
-          seçerek tekrar dene.
-        </p>
+        <EmptyState description="Bu filtrelere uygun öneri bulunamadı. Farklı bir seviye veya tür seçerek tekrar dene." />
       ) : (
         filteredRecommendations.map((item) => (
           <div className="content-card" key={item.id}>

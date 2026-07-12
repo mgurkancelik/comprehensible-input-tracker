@@ -35,3 +35,10 @@ export function createContent(payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export function updateContent(id, payload) {
+  return apiFetch(`/contents/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}

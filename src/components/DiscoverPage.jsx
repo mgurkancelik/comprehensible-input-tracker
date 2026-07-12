@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import PosterCard from "./PosterCard";
 import ContentDetailModal from "./ContentDetailModal";
+import Chip from "./ui/Chip";
+import ErrorState from "./ui/ErrorState";
 import {
   estimateLevel,
   getGenreLabel,
@@ -287,19 +289,14 @@ function DiscoverPage({
             <span className="filter-group-label">Tür</span>
             <div className="filter-chip-row">
               {TYPE_FILTER_OPTIONS.map((option) => (
-                <button
+                <Chip
                   key={option}
-                  type="button"
-                  className={
-                    typeFilter === option
-                      ? "filter-chip filter-chip--active"
-                      : "filter-chip"
-                  }
-                  aria-pressed={typeFilter === option}
+                  variant="filter"
+                  selected={typeFilter === option}
                   onClick={() => setTypeFilter(option)}
                 >
                   {option}
-                </button>
+                </Chip>
               ))}
             </div>
           </div>
@@ -309,19 +306,14 @@ function DiscoverPage({
           <span className="filter-group-label">Seviye</span>
           <div className="filter-chip-row">
             {LEVEL_FILTER_OPTIONS.map((option) => (
-              <button
+              <Chip
                 key={option}
-                type="button"
-                className={
-                  levelFilter === option
-                    ? "filter-chip filter-chip--active"
-                    : "filter-chip"
-                }
-                aria-pressed={levelFilter === option}
+                variant="filter"
+                selected={levelFilter === option}
                 onClick={() => setLevelFilter(option)}
               >
                 {option}
-              </button>
+              </Chip>
             ))}
           </div>
         </div>
@@ -330,31 +322,25 @@ function DiscoverPage({
           <span className="filter-group-label">Puan</span>
           <div className="filter-chip-row">
             {RATING_FILTER_OPTIONS.map((option) => (
-              <button
+              <Chip
                 key={option}
-                type="button"
-                className={
-                  ratingFilter === option
-                    ? "filter-chip filter-chip--active"
-                    : "filter-chip"
-                }
-                aria-pressed={ratingFilter === option}
+                variant="filter"
+                selected={ratingFilter === option}
                 onClick={() => setRatingFilter(option)}
               >
                 {option}
-              </button>
+              </Chip>
             ))}
           </div>
         </div>
       </div>
 
       {status === "error" && (
-        <div className="discover-error">
-          <p>⚠️ {errorMessage}</p>
-          <button type="button" onClick={retryLoading}>
-            Tekrar Dene
-          </button>
-        </div>
+        <ErrorState
+          className="discover-error"
+          description={errorMessage}
+          onRetry={retryLoading}
+        />
       )}
 
       {status === "loading" && (

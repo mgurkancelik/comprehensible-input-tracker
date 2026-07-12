@@ -1,7 +1,26 @@
-// Toplam input dakikası: bir içeriğin izlenen bölüm sayısı x bölüm süresi.
-// Dashboard, StatsPanel ve Input Hedefi kartının "tüm zamanlar" toplamı için
-// tek doğru kaynak budur.
+// Toplam input dakikası. Bölümlü içerikler (dizi/anime/podcast) için mevcut
+// mantık aynen korunur: izlenen bölüm sayısı x bölüm süresi. Filmler tek
+// parça içerik olduğu, "bölüm" kavramı taşımadığı için (watchedEpisodes hep 0
+// kalır) ayrı ele alınır: tamamlanmış (status === "İzlediklerim") bir film,
+// kendi kayıtlı süresi (minutesPerEpisode) kadar toplam inputa katkı sağlar;
+// tamamlanmamışsa 0 döner. Bu değer her çağrıda content'in güncel alanlarından
+// türetilir — ayrı bir sayaç olarak saklanmaz, bu sayede status "İzledim"den
+// çıkarıldığında kendi süresi otomatik olarak toplamdan düşer ve eski
+// watchedEpisodes=0 olan tamamlanmış filmler migration gerekmeden doğru
+// hesaplanır. Dashboard, StatsPanel ve Input Hedefi kartının "tüm zamanlar"
+// toplamı için tek doğru kaynak budur.
 export function getContentTotalMinutes(content) {
+  if (content.type === "Film") {
+    const isCompleted = content.status === "İzlediklerim";
+    const movieMinutes = Number(content.minutesPerEpisode);
+
+    if (isCompleted && Number.isFinite(movieMinutes) && movieMinutes > 0) {
+      return movieMinutes;
+    }
+
+    return 0;
+  }
+
   const watchedEpisodes = content.watchedEpisodes || 0;
   const minutesPerEpisode = content.minutesPerEpisode || 0;
   return watchedEpisodes * minutesPerEpisode;

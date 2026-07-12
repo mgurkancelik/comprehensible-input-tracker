@@ -9,6 +9,10 @@ import NotesModal from "./components/NotesModal";
 import InputGoalCard from "./components/InputGoalCard";
 import AuthScreen from "./components/AuthScreen";
 import LoginRequiredState from "./components/LoginRequiredState";
+import Modal from "./components/ui/Modal";
+import Chip from "./components/ui/Chip";
+import LoadingState from "./components/ui/LoadingState";
+import ErrorState from "./components/ui/ErrorState";
 import {
   getTotalInputMinutes,
   getMinutesInRange,
@@ -23,7 +27,7 @@ import {
   updateUserContent,
   deleteUserContent,
 } from "./services/userContents";
-import { getContents, createContent } from "./services/contents";
+import { getContents, createContent, updateContent } from "./services/contents";
 import { registerUser, loginUser, getCurrentUser } from "./services/auth";
 import "./App.css";
 
@@ -307,34 +311,6 @@ function App() {
     setAuthError(null);
   };
 
-  const handleAuthModalOverlayClick = (event) => {
-    if (event.target === event.currentTarget) {
-      closeAuthModal();
-    }
-  };
-
-  // Diğer modallerle (NotesModal, ContentDetailModal) aynı davranış: Escape
-  // ile kapanır, açıkken arka plan kaydırılmaz.
-  useEffect(() => {
-    if (!showAuthModal) {
-      return;
-    }
-
-    const handleKeyDown = (event) => {
-      if (event.key === "Escape") {
-        closeAuthModal();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "";
-    };
-  }, [showAuthModal]);
-
   // Sayfa açılışında localStorage'daki token'ı /api/auth/me ile doğrular.
   // Geçerliyse authUser set edilir; geçersizse (veya yoksa) auth temizlenir
   // ve kullanıcı giriş ekranını görür. contents state'i her iki durumda da
@@ -601,6 +577,19 @@ function App() {
 
   const handleChange = (event) => {
     const { name, value } = event.target;
+
+    // Tür dizi/anime/podcast'ten filme çevrilince, formda kalan eski bölüm
+    // değerlerinin (totalEpisodes/watchedEpisodes) filme yanlışlıkla
+    // kaydedilmesini önlemek için bu iki alan sıfırlanır.
+    if (name === "type" && value === "Film") {
+      setForm({
+        ...form,
+        type: value,
+        totalEpisodes: "",
+        watchedEpisodes: "",
+      });
+      return;
+    }
 
     setForm({
       ...form,
@@ -869,12 +858,22 @@ function App() {
     const today = getToday();
     const content = contents.find((item) => item.id === id);
 
-    if (!content || content.watchedEpisodes >= content.totalEpisodes) {
+    if (!content || content.type === "Film") {
       return;
     }
 
-    const newWatchedEpisodes = content.watchedEpisodes + 1;
-    const isFinished = newWatchedEpisodes >= content.totalEpisodes;
+    // totalEpisodes güvenilir şekilde bilinmiyorsa (0 veya geçersiz), bölüm
+    // artırma anlamsız olur — sessizce hiçbir şey yapmadan dönülür. Buton da
+    // aynı koşulla render'da disabled ediliyor (bkz. renderContentCard).
+    const totalEpisodes = Math.floor(toSafeNumber(content.totalEpisodes));
+    const watchedEpisodes = Math.floor(toSafeNumber(content.watchedEpisodes));
+
+    if (totalEpisodes <= 0 || watchedEpisodes >= totalEpisodes) {
+      return;
+    }
+
+    const newWatchedEpisodes = watchedEpisodes + 1;
+    const isFinished = newWatchedEpisodes >= totalEpisodes;
 
     const updatedContent = {
       ...content,
@@ -898,13 +897,10 @@ function App() {
     );
 
     const watchedMinutes = newWatchedEpisodes * (content.minutesPerEpisode || 0);
-    const watchedPercentage =
-      content.totalEpisodes > 0
-        ? Math.min(
-            100,
-            Math.round((newWatchedEpisodes / content.totalEpisodes) * 100)
-          )
-        : 0;
+    const watchedPercentage = Math.min(
+      100,
+      Math.round((newWatchedEpisodes / totalEpisodes) * 100)
+    );
 
     syncSummaryToBackendInBackground(content, {
       watchedEpisodes: newWatchedEpisodes,
@@ -918,18 +914,25 @@ function App() {
     const today = getToday();
     const content = contents.find((item) => item.id === id);
 
-    if (!content) {
+    if (!content || content.type === "Film") {
       return;
     }
 
-    const remainingEpisodes = Math.max(
-      content.totalEpisodes - content.watchedEpisodes,
-      0
-    );
+    // totalEpisodes güvenilir şekilde bilinmiyorsa (0 veya geçersiz), "tümünü
+    // izledim" anlamsız/yanlış bir değer (0 veya NaN) yazardı — bu yüzden
+    // sessizce hiçbir şey yapmadan dönülür.
+    const totalEpisodes = Math.floor(toSafeNumber(content.totalEpisodes));
+
+    if (totalEpisodes <= 0) {
+      return;
+    }
+
+    const watchedEpisodes = Math.floor(toSafeNumber(content.watchedEpisodes));
+    const remainingEpisodes = Math.max(totalEpisodes - watchedEpisodes, 0);
 
     const updatedContent = {
       ...content,
-      watchedEpisodes: content.totalEpisodes,
+      watchedEpisodes: totalEpisodes,
       status: "İzlediklerim",
       completedDate: content.completedDate || today,
       watchLogs: [
@@ -949,8 +952,8 @@ function App() {
     );
 
     syncSummaryToBackendInBackground(content, {
-      watchedEpisodes: content.totalEpisodes,
-      watchedMinutes: content.totalEpisodes * (content.minutesPerEpisode || 0),
+      watchedEpisodes: totalEpisodes,
+      watchedMinutes: totalEpisodes * (content.minutesPerEpisode || 0),
       watchedPercentage: 100,
       status: "completed",
       finishDate: updatedContent.completedDate || today,
@@ -1265,24 +1268,43 @@ function App() {
 
   // Dizi detayları (getSeriesDetails) yüklenince gerçek toplam bölüm sayısını
   // yazar. Sadece listeye eklenmiş dizi içerikleri için çalışır; film veya
-  // eklenmemiş içeriklerde no-op'tur.
+  // eklenmemiş içeriklerde no-op'tur. totalEpisodes bir katalog (Content)
+  // bilgisidir — hangi kullanıcı izliyor olursa olsun aynı dizinin toplam
+  // bölüm sayısı değişmez — bu yüzden React state güncellemesinin yanında
+  // mevcut PUT /contents/:id akışıyla Content dokümanına da kalıcı olarak
+  // yazılır; böylece sayfa yenilendiğinde (mapUserContentToFrontendContent
+  // zaten contentData.totalEpisodes'u okuduğu için) değer korunur.
   const syncSeriesTotalEpisodes = (sourceId, totalEpisodeCount) => {
-    if (!totalEpisodeCount) {
+    const safeTotalEpisodes = Math.floor(toSafeNumber(totalEpisodeCount));
+
+    if (safeTotalEpisodes <= 0) {
+      return;
+    }
+
+    const content = contents.find(
+      (item) => item.sourceId === sourceId && item.mediaType === "tv"
+    );
+
+    if (!content || content.totalEpisodes === safeTotalEpisodes) {
       return;
     }
 
     setContents((prevContents) =>
-      prevContents.map((content) => {
-        if (content.sourceId !== sourceId || content.mediaType !== "tv") {
-          return content;
-        }
-
-        return {
-          ...content,
-          totalEpisodes: totalEpisodeCount,
-        };
-      })
+      prevContents.map((item) =>
+        item.sourceId === sourceId && item.mediaType === "tv"
+          ? { ...item, totalEpisodes: safeTotalEpisodes }
+          : item
+      )
     );
+
+    if (content.backendContentId) {
+      updateContent(content.backendContentId, {
+        totalEpisodes: safeTotalEpisodes,
+      }).catch(() => {
+        // Arka plan senkronizasyonu: başarısız olsa da React state zaten
+        // güncellendi, kullanıcının o anki akışı bundan etkilenmez.
+      });
+    }
   };
 
   // Bir sezonun bölümleri (getSeasonDetails) yüklenince content.seasons'ı
@@ -1884,6 +1906,8 @@ function App() {
   };
 
   const renderContentCard = (item) => {
+    const isMovie = item.type === "Film";
+
     const isSeasonTracked =
       item.mediaType === "tv" && item.seasons && item.seasons.length > 0;
 
@@ -1923,6 +1947,7 @@ function App() {
     const dailyRequiredHours = (dailyRequiredMinutes / 60).toFixed(1);
 
     const isFinished = watchedEpisodes >= totalEpisodes && totalEpisodes > 0;
+    const totalEpisodesUnknown = totalEpisodes <= 0;
 
     return (
       <div className="content-card" key={item.id}>
@@ -1976,17 +2001,15 @@ function App() {
                   const isActive = getStatus(item) === option.value;
 
                   return (
-                    <button
+                    <Chip
                       key={option.value}
-                      type="button"
-                      className={`card-status-chip${
-                        isActive ? " card-status-chip--active" : ""
-                      }`}
+                      variant="status"
+                      selected={isActive}
                       onClick={() => setContentStatus(item.id, option.value)}
                       disabled={updatingContentId === item.id}
                     >
                       {option.label}
-                    </button>
+                    </Chip>
                   );
                 })}
               </div>
@@ -2031,23 +2054,25 @@ function App() {
           </button>
         </div>
 
-        <div className="circle-progress-row">
-          <div
-            className="circle-progress"
-            style={{
-              background: `conic-gradient(var(--color-progress) ${progress}%, var(--color-surface-alt) 0)`,
-            }}
-          >
-            <div>{progress}%</div>
-          </div>
+        {!isMovie && (
+          <div className="circle-progress-row">
+            <div
+              className="circle-progress"
+              style={{
+                background: `conic-gradient(var(--color-progress) ${progress}%, var(--color-surface-alt) 0)`,
+              }}
+            >
+              <div>{progress}%</div>
+            </div>
 
-          <div>
-            <strong>
-              {watchedEpisodes}/{totalEpisodes} Bölüm
-            </strong>
-            <p>{remainingEpisodes} bölüm kaldı</p>
+            <div>
+              <strong>
+                {watchedEpisodes}/{totalEpisodes} Bölüm
+              </strong>
+              <p>{remainingEpisodes} bölüm kaldı</p>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="details-grid">
           <div>
@@ -2164,12 +2189,17 @@ function App() {
           </div>
         )}
 
-        {!isSeasonTracked && (
+        {!isSeasonTracked && !isMovie && (
           <div className="card-actions">
             <button
               className="watch-btn"
               onClick={() => watchOneEpisode(item.id)}
-              disabled={isFinished}
+              disabled={isFinished || totalEpisodesUnknown}
+              title={
+                totalEpisodesUnknown
+                  ? "Önce bölüm bilgilerini yükle"
+                  : undefined
+              }
             >
               +1 bölüm izledim
             </button>
@@ -2177,7 +2207,12 @@ function App() {
             <button
               className="complete-btn"
               onClick={() => markAllWatched(item.id)}
-              disabled={isFinished}
+              disabled={isFinished || totalEpisodesUnknown}
+              title={
+                totalEpisodesUnknown
+                  ? "Önce bölüm bilgilerini yükle"
+                  : undefined
+              }
             >
               Tümünü izledim
             </button>
@@ -2370,13 +2405,16 @@ function App() {
         </header>
 
         {isContentsLoading && (
-          <p className="empty-text">İçerikler sunucudan yükleniyor...</p>
+          <LoadingState label="İçerikler sunucudan yükleniyor..." />
         )}
 
         {contentsError && (
-          <p className="empty-text">
-            Sunucudan veri alınamadı, yerel kayıtların gösteriliyor. ({contentsError})
-          </p>
+          <ErrorState
+            className="empty-text"
+            role="status"
+            icon={null}
+            description={`Sunucudan veri alınamadı, yerel kayıtların gösteriliyor. (${contentsError})`}
+          />
         )}
 
         {contentAddFeedback && (
@@ -2478,34 +2516,21 @@ function App() {
         />
       )}
 
-      {showAuthModal && (
-        <div className="modal-overlay" onClick={handleAuthModalOverlayClick}>
-          <div
-            className="modal-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="auth-modal-title"
-          >
-            <button
-              type="button"
-              className="modal-close-btn"
-              onClick={closeAuthModal}
-              aria-label="Kapat"
-            >
-              ✕
-            </button>
-
-            <AuthScreen
-              mode={authMode}
-              onModeChange={handleAuthModeChange}
-              onLogin={handleLogin}
-              onRegister={handleRegister}
-              isLoading={isAuthSubmitting}
-              error={authError}
-            />
-          </div>
-        </div>
-      )}
+      <Modal
+        open={showAuthModal}
+        onClose={closeAuthModal}
+        ariaLabel="Giriş veya hesap oluşturma"
+        size="md"
+      >
+        <AuthScreen
+          mode={authMode}
+          onModeChange={handleAuthModeChange}
+          onLogin={handleLogin}
+          onRegister={handleRegister}
+          isLoading={isAuthSubmitting}
+          error={authError}
+        />
+      </Modal>
     </div>
   );
 }

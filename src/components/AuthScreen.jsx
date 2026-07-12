@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Button from "./ui/Button";
 
 function AuthScreen({ mode, onModeChange, onLogin, onRegister, isLoading, error }) {
   const [name, setName] = useState("");
@@ -68,13 +69,14 @@ function AuthScreen({ mode, onModeChange, onLogin, onRegister, isLoading, error 
         {error && <p className="empty-text">{error}</p>}
 
         <div className="form-submit-row">
-          <button type="submit" className="submit-btn" disabled={isLoading}>
-            {isLoading
-              ? "Bekleyin..."
-              : isRegister
-              ? "Hesap Oluştur"
-              : "Giriş Yap"}
-          </button>
+          <Button
+            type="submit"
+            size="lg"
+            loading={isLoading}
+            loadingLabel="Bekleyin..."
+          >
+            {isRegister ? "Hesap Oluştur" : "Giriş Yap"}
+          </Button>
         </div>
       </form>
 
