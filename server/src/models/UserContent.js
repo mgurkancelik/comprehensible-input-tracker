@@ -46,6 +46,25 @@ const userContentSchema = new mongoose.Schema(
       default: 0,
       min: [0, "watchedEpisodes negatif olamaz"],
     },
+    // Kullanıcıya özel toplam bölüm bilgisi. Content.totalEpisodes (katalog)
+    // paylaşılan/genel bir fallback olarak kalır, ama TMDb sezon
+    // senkronizasyonundan bulunan gerçek değer artık buraya (JWT/ownership
+    // korumalı UserContent kaydına) yazılır — böylece bir kullanıcının
+    // senkronizasyonu başka bir kullanıcının veya global kataloğun verisini
+    // etkilemez. Üst sınır (100000) en uzun soluklu dizi/animeleri (örn.
+    // Sazae-san ~2700, One Piece ~1100 bölüm) kapsayacak kadar geniş, ama
+    // anlamsız/kötüye kullanım amaçlı aşırı büyük değerleri (10^9 gibi)
+    // reddedecek kadar dar tutulan, açıklanabilir bir güvenlik sınırıdır.
+    totalEpisodes: {
+      type: Number,
+      default: 0,
+      min: [0, "totalEpisodes negatif olamaz"],
+      max: [100000, "totalEpisodes çok büyük bir değer"],
+      validate: {
+        validator: Number.isInteger,
+        message: "totalEpisodes tam sayı olmalı",
+      },
+    },
     notes: { type: String, default: "" },
     watchLogs: { type: [watchLogSchema], default: [] },
     startDate: { type: String, default: "" },

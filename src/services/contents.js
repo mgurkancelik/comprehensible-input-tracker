@@ -1,11 +1,11 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
-async function apiFetch(endpoint, options = {}) {
+async function apiFetch(endpoint, { headers, ...options } = {}) {
   let response;
 
   try {
     response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...headers },
       ...options,
     });
   } catch {
@@ -25,20 +25,18 @@ async function apiFetch(endpoint, options = {}) {
   return data;
 }
 
+function authHeaders(token) {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export function getContents() {
   return apiFetch("/contents");
 }
 
-export function createContent(payload) {
+export function createContent(payload, token) {
   return apiFetch("/contents", {
     method: "POST",
     body: JSON.stringify(payload),
-  });
-}
-
-export function updateContent(id, payload) {
-  return apiFetch(`/contents/${id}`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
+    headers: authHeaders(token),
   });
 }

@@ -22,6 +22,61 @@ function handleError(res, error, fallbackMessage) {
   return res.status(500).json({ ok: false, message: fallbackMessage });
 }
 
+// Kullanıcının create/update body'sinde gönderebileceği güvenli alanlar.
+// Bu listenin dışında kalan hiçbir alan (örn. userId, contentId'nin
+// update'te değiştirilmesi) MongoDB'ye yazılmaz — client'ın kontrol
+// etmemesi gereken alanlar whitelist dışı tutularak korunur.
+const ALLOWED_USER_CONTENT_FIELDS = [
+  "status",
+  "watchedMinutes",
+  "watchedPercentage",
+  "watchedEpisodes",
+  "totalEpisodes",
+  "notes",
+  "watchLogs",
+  "startDate",
+  "finishDate",
+];
+
+function pickAllowedFields(source, allowedFields) {
+  const picked = {};
+
+  allowedFields.forEach((field) => {
+    if (source && Object.prototype.hasOwnProperty.call(source, field)) {
+      picked[field] = source[field];
+    }
+  });
+
+  return picked;
+}
+
+// Domain için açıklanabilir bir üst sınır: bkz. UserContent.js şemasındaki
+// totalEpisodes yorumu (en uzun soluklu dizi/animeleri kapsayacak kadar
+// geniş, kötüye kullanımı reddedecek kadar dar).
+const MAX_TOTAL_EPISODES = 100000;
+
+// undefined/eksik alan bu fonksiyona hiç gelmez (pickAllowedFields zaten
+// yalnızca body'de gerçekten bulunan alanları seçer) — bu yüzden mevcut
+// değeri "değiştirmeme" davranışı whitelist seviyesinde garanti edilir.
+// Burada yalnızca GELEN değerin geçerliliği kontrol edilir: geçersizse
+// null döner ve controller 400 ile açıkça reddeder (sessiz normalize yok).
+function normalizeTotalEpisodes(rawValue) {
+  const numberValue = Number(rawValue);
+
+  if (
+    rawValue === null ||
+    rawValue === "" ||
+    !Number.isFinite(numberValue) ||
+    !Number.isInteger(numberValue) ||
+    numberValue < 0 ||
+    numberValue > MAX_TOTAL_EPISODES
+  ) {
+    return null;
+  }
+
+  return numberValue;
+}
+
 async function getUserContents(req, res) {
   try {
     const userContents = await UserContent.find({ userId: req.userId })
@@ -38,11 +93,7 @@ async function getUserContents(req, res) {
 async function createUserContent(req, res) {
   try {
     const userId = req.userId;
-    const {
-  contentId,
-  userId: _ignoredUserId,
-  ...rest
-} = req.body || {};
+    const { contentId } = req.body || {};
 
     if (!contentId) {
       return res
@@ -68,7 +119,22 @@ async function createUserContent(req, res) {
       });
     }
 
-    const created = await UserContent.create({ ...rest, userId, contentId });
+    const payload = pickAllowedFields(req.body, ALLOWED_USER_CONTENT_FIELDS);
+
+    if (Object.prototype.hasOwnProperty.call(payload, "totalEpisodes")) {
+      const normalized = normalizeTotalEpisodes(payload.totalEpisodes);
+
+      if (normalized === null) {
+        return res.status(400).json({
+          ok: false,
+          message: `totalEpisodes 0 ile ${MAX_TOTAL_EPISODES} arasında bir tam sayı olmalı.`,
+        });
+      }
+
+      payload.totalEpisodes = normalized;
+    }
+
+    const created = await UserContent.create({ ...payload, userId, contentId });
     res.status(201).json({ ok: true, data: created });
   } catch (error) {
     handleError(res, error, "Failed to create user content");
@@ -78,14 +144,24 @@ async function createUserContent(req, res) {
 async function updateUserContent(req, res) {
   try {
     const { id } = req.params;
-    const {
-  userId: _ignoredUserId,
-  ...updates
-} = req.body || {};
+    const payload = pickAllowedFields(req.body, ALLOWED_USER_CONTENT_FIELDS);
+
+    if (Object.prototype.hasOwnProperty.call(payload, "totalEpisodes")) {
+      const normalized = normalizeTotalEpisodes(payload.totalEpisodes);
+
+      if (normalized === null) {
+        return res.status(400).json({
+          ok: false,
+          message: `totalEpisodes 0 ile ${MAX_TOTAL_EPISODES} arasında bir tam sayı olmalı.`,
+        });
+      }
+
+      payload.totalEpisodes = normalized;
+    }
 
     const updated = await UserContent.findOneAndUpdate(
       { _id: id, userId: req.userId },
-      updates,
+      payload,
       { new: true, runValidators: true }
     );
 

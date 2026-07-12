@@ -27,7 +27,7 @@ import {
   updateUserContent,
   deleteUserContent,
 } from "./services/userContents";
-import { getContents, createContent, updateContent } from "./services/contents";
+import { getContents, createContent } from "./services/contents";
 import { registerUser, loginUser, getCurrentUser } from "./services/auth";
 import "./App.css";
 
@@ -77,12 +77,22 @@ function extractTmdbNumericId(rawId) {
   return match ? Number(match[1]) : null;
 }
 
+// Bir değeri "geçerli, pozitif bölüm sayısı" olarak kabul edilebiliyorsa
+// sayı olarak, aksi halde null olarak döner. mapUserContentToFrontendContent
+// içinde totalEpisodes için öncelik zinciri kurarken (UserContent → Content
+// → 0) `0`'ın "geçerli ama henüz bilinmiyor" anlamına da gelebilmesi
+// nedeniyle `||` zincirine güvenmek yerine bu açık kontrol kullanılır.
+function toPositiveEpisodeCount(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
+}
+
 // Herhangi bir "local content" nesnesi (manuel form, öneri veya Keşfet
 // kaynaklı fark etmeksizin) için backend'deki ortak content kataloğunda
 // (tmdbId/sourceId + mediaType eşleşmesiyle, yoksa title + mediaType ile)
 // mevcut kaydı arar, bulamazsa yeni bir content kaydı oluşturur. Her iki
 // durumda da oluşan/bulunan content dokümanını döner.
-async function findOrCreateBackendContentFromLocal(localContent) {
+async function findOrCreateBackendContentFromLocal(localContent, token) {
   const tmdbId = extractTmdbNumericId(
     localContent.sourceId ?? localContent.tmdbId ?? null
   );
@@ -114,21 +124,24 @@ async function findOrCreateBackendContentFromLocal(localContent) {
     return matchedContent;
   }
 
-  const created = await createContent({
-    title: localContent.title,
-    name: localContent.title,
-    type: localContent.type,
-    mediaType,
-    tmdbId,
-    poster: posterUrl,
-    posterUrl,
-    overview: localContent.overview || "",
-    rating,
-    tmdbRating: rating,
-    totalEpisodes: localContent.totalEpisodes || 0,
-    episodeDuration: localContent.minutesPerEpisode || 0,
-    wordsPerEpisode: localContent.wordsPerEpisode || 0,
-  });
+  const created = await createContent(
+    {
+      title: localContent.title,
+      name: localContent.title,
+      type: localContent.type,
+      mediaType,
+      tmdbId,
+      poster: posterUrl,
+      posterUrl,
+      overview: localContent.overview || "",
+      rating,
+      tmdbRating: rating,
+      totalEpisodes: localContent.totalEpisodes || 0,
+      episodeDuration: localContent.minutesPerEpisode || 0,
+      wordsPerEpisode: localContent.wordsPerEpisode || 0,
+    },
+    token
+  );
 
   return created?.data;
 }
@@ -166,7 +179,12 @@ function mapUserContentToFrontendContent(userContent) {
     mediaType: contentData.mediaType || "",
     posterUrl: contentData.poster || "",
     overview: contentData.overview || "",
-    totalEpisodes: contentData.totalEpisodes || 0,
+    // Öncelik: kullanıcıya özel UserContent.totalEpisodes (TMDb senkronu artık
+    // buraya yazıyor) → katalog Content.totalEpisodes fallback'i → 0.
+    totalEpisodes:
+      toPositiveEpisodeCount(userContent.totalEpisodes) ??
+      toPositiveEpisodeCount(contentData.totalEpisodes) ??
+      0,
     minutesPerEpisode: contentData.episodeDuration || 0,
     wordsPerEpisode: contentData.wordsPerEpisode || 0,
     tmdbRating: contentData.rating || null,
@@ -189,7 +207,10 @@ function mapUserContentToFrontendContent(userContent) {
 // göre yapar (yeni kart ekleme veya mevcut legacy kaydı güncelleme gibi).
 async function saveContentToBackend(localContent, targetStatus, token) {
   try {
-    const backendContent = await findOrCreateBackendContentFromLocal(localContent);
+    const backendContent = await findOrCreateBackendContentFromLocal(
+      localContent,
+      token
+    );
 
     const totalEpisodes = localContent.totalEpisodes || 0;
     const watchedEpisodes = localContent.watchedEpisodes || 0;
@@ -206,6 +227,7 @@ async function saveContentToBackend(localContent, targetStatus, token) {
         watchedMinutes,
         watchedPercentage,
         watchedEpisodes,
+        totalEpisodes,
         notes: localContent.notes || "",
         watchLogs: localContent.watchLogs || [],
         startDate: localContent.startDate || "",
@@ -1268,12 +1290,14 @@ function App() {
 
   // Dizi detayları (getSeriesDetails) yüklenince gerçek toplam bölüm sayısını
   // yazar. Sadece listeye eklenmiş dizi içerikleri için çalışır; film veya
-  // eklenmemiş içeriklerde no-op'tur. totalEpisodes bir katalog (Content)
-  // bilgisidir — hangi kullanıcı izliyor olursa olsun aynı dizinin toplam
-  // bölüm sayısı değişmez — bu yüzden React state güncellemesinin yanında
-  // mevcut PUT /contents/:id akışıyla Content dokümanına da kalıcı olarak
-  // yazılır; böylece sayfa yenilendiğinde (mapUserContentToFrontendContent
-  // zaten contentData.totalEpisodes'u okuduğu için) değer korunur.
+  // eklenmemiş içeriklerde no-op'tur. totalEpisodes artık kullanıcıya özel
+  // UserContent kaydında saklanıyor (global Content kataloğuna YAZILMIYOR) —
+  // böylece bu değer mevcut JWT/ownership korumasının altında kalır ve bir
+  // kullanıcının senkronizasyonu başka bir kullanıcının veya paylaşılan
+  // kataloğun verisini etkilemez. React state güncellemesinin yanında,
+  // mevcut authenticated saveUserContentUpdate (PUT /user-contents/:id)
+  // akışıyla kalıcı hale getirilir; status/watchedEpisodes/notes gibi
+  // ilgisiz alanlar payload'a hiç dahil edilmez.
   const syncSeriesTotalEpisodes = (sourceId, totalEpisodeCount) => {
     const safeTotalEpisodes = Math.floor(toSafeNumber(totalEpisodeCount));
 
@@ -1297,14 +1321,18 @@ function App() {
       )
     );
 
-    if (content.backendContentId) {
-      updateContent(content.backendContentId, {
-        totalEpisodes: safeTotalEpisodes,
-      }).catch(() => {
-        // Arka plan senkronizasyonu: başarısız olsa da React state zaten
-        // güncellendi, kullanıcının o anki akışı bundan etkilenmez.
-      });
-    }
+    saveUserContentUpdate(
+      content,
+      { totalEpisodes: safeTotalEpisodes },
+      authToken
+    ).then((result) => {
+      if (result.status === "error" || result.status === "not_found") {
+        console.error(
+          "Bölüm sayısı senkronizasyonu MongoDB'ye kaydedilemedi:",
+          result.message || result.status
+        );
+      }
+    });
   };
 
   // Bir sezonun bölümleri (getSeasonDetails) yüklenince content.seasons'ı
@@ -2189,7 +2217,7 @@ function App() {
           </div>
         )}
 
-        {!isSeasonTracked && !isMovie && (
+        {!isMovie && (
           <div className="card-actions">
             <button
               className="watch-btn"
@@ -2204,18 +2232,20 @@ function App() {
               +1 bölüm izledim
             </button>
 
-            <button
-              className="complete-btn"
-              onClick={() => markAllWatched(item.id)}
-              disabled={isFinished || totalEpisodesUnknown}
-              title={
-                totalEpisodesUnknown
-                  ? "Önce bölüm bilgilerini yükle"
-                  : undefined
-              }
-            >
-              Tümünü izledim
-            </button>
+            {!isSeasonTracked && (
+              <button
+                className="complete-btn"
+                onClick={() => markAllWatched(item.id)}
+                disabled={isFinished || totalEpisodesUnknown}
+                title={
+                  totalEpisodesUnknown
+                    ? "Önce bölüm bilgilerini yükle"
+                    : undefined
+                }
+              >
+                Tümünü izledim
+              </button>
+            )}
           </div>
         )}
       </div>

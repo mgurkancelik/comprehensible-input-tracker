@@ -1,4 +1,3 @@
-const mongoose = require("mongoose");
 const Content = require("../models/Content");
 
 // error.message'ı olduğu gibi client'a döndürmüyoruz; sadece bilinen ve
@@ -14,10 +13,37 @@ function handleError(res, error, fallbackMessage) {
   return res.status(500).json({ ok: false, message: fallbackMessage });
 }
 
-function buildIdQuery(id) {
-  return mongoose.Types.ObjectId.isValid(id)
-    ? { $or: [{ _id: id }, { id }] }
-    : { id };
+// findOrCreateBackendContentFromLocal (frontend) POST /contents ile
+// yalnızca bu alanları gönderiyor. Bunun dışında kalan hiçbir alan (örn.
+// status, notes, watchLogs, seasons) bu yoldan global katalog kaydına
+// yazılamaz — Content.js'in strict:false olması bu whitelist'in önemini
+// artırıyor (şema seviyesinde otomatik bir filtre yok).
+const ALLOWED_CONTENT_FIELDS = [
+  "title",
+  "name",
+  "type",
+  "mediaType",
+  "tmdbId",
+  "poster",
+  "posterUrl",
+  "overview",
+  "rating",
+  "tmdbRating",
+  "totalEpisodes",
+  "episodeDuration",
+  "wordsPerEpisode",
+];
+
+function pickAllowedFields(source, allowedFields) {
+  const picked = {};
+
+  allowedFields.forEach((field) => {
+    if (source && Object.prototype.hasOwnProperty.call(source, field)) {
+      picked[field] = source[field];
+    }
+  });
+
+  return picked;
 }
 
 async function getContents(req, res) {
@@ -31,113 +57,31 @@ async function getContents(req, res) {
 
 async function createContent(req, res) {
   try {
-    const created = await Content.create(req.body);
+    const payload = pickAllowedFields(req.body, ALLOWED_CONTENT_FIELDS);
+    const created = await Content.create(payload);
     res.status(201).json({ ok: true, data: created });
   } catch (error) {
     handleError(res, error, "Failed to create content");
   }
 }
 
-async function updateContent(req, res) {
-  try {
-    const { id } = req.params;
-
-    const updated = await Content.findOneAndUpdate(buildIdQuery(id), req.body, {
-      returnDocument: "after",
-      runValidators: true,
-    });
-
-    if (!updated) {
-      return res.status(404).json({ ok: false, message: "Content not found" });
-    }
-
-    res.json({ ok: true, data: updated });
-  } catch (error) {
-    handleError(res, error, "Failed to update content");
-  }
+// Global katalog kaydını güncelleme/silme/toplu ekleme, admin veya rol
+// sistemi olmadan hiçbir kullanıcıya (giriş yapmış olsa da) açık
+// bırakılmıyor — bu değişiklikler TÜM kullanıcıları etkiler, tek başına
+// requireAuth (route seviyesinde uygulanıyor) yeterli değildir. Şu an
+// frontend'de bu endpoint'leri çağıran gerçek bir akış yok; meşru bir admin
+// ihtiyacı doğarsa burası gerçek bir admin/rol kontrolüyle yeniden açılabilir.
+function updateContent(req, res) {
+  res.status(403).json({ ok: false, message: "Bu işlem için yetkiniz yok." });
 }
 
-async function deleteContent(req, res) {
-  try {
-    const { id } = req.params;
-
-    const deleted = await Content.findOneAndDelete(buildIdQuery(id));
-
-    if (!deleted) {
-      return res.status(404).json({ ok: false, message: "Content not found" });
-    }
-
-    res.json({ ok: true, message: "Content deleted", data: deleted });
-  } catch (error) {
-    handleError(res, error, "Failed to delete content");
-  }
+function deleteContent(req, res) {
+  res.status(403).json({ ok: false, message: "Bu işlem için yetkiniz yok." });
 }
 
-async function bulkImportContents(req, res) {
-  try {
-    const items = req.body;
-
-    if (!Array.isArray(items)) {
-      return res
-        .status(400)
-        .json({ ok: false, message: "Request body must be an array of contents" });
-    }
-
-    if (items.length === 0) {
-      return res.json({ ok: true, insertedCount: 0, skippedCount: 0, total: 0 });
-    }
-
-    const existing = await Content.find({}, { id: 1, tmdbId: 1, title: 1 }).lean();
-
-    const existingIds = new Set(existing.map((c) => c.id).filter(Boolean));
-    const existingTmdbIds = new Set(
-      existing.map((c) => c.tmdbId).filter((v) => v !== undefined && v !== null)
-    );
-    const existingTitles = new Set(
-      existing.map((c) => (c.title || "").trim().toLowerCase()).filter(Boolean)
-    );
-
-    const seenInBatch = new Set();
-    const toInsert = [];
-    let skippedCount = 0;
-
-    for (const item of items) {
-      const idKey = item && item.id;
-      const tmdbKey = item && item.tmdbId;
-      const titleKey = ((item && item.title) || "").trim().toLowerCase();
-
-      const isDuplicate =
-        (idKey && existingIds.has(idKey)) ||
-        (tmdbKey !== undefined && tmdbKey !== null && existingTmdbIds.has(tmdbKey)) ||
-        (titleKey && existingTitles.has(titleKey)) ||
-        (idKey && seenInBatch.has(`id:${idKey}`)) ||
-        (tmdbKey !== undefined && tmdbKey !== null && seenInBatch.has(`tmdb:${tmdbKey}`)) ||
-        (titleKey && seenInBatch.has(`title:${titleKey}`));
-
-      if (isDuplicate) {
-        skippedCount += 1;
-        continue;
-      }
-
-      if (idKey) seenInBatch.add(`id:${idKey}`);
-      if (tmdbKey !== undefined && tmdbKey !== null) seenInBatch.add(`tmdb:${tmdbKey}`);
-      if (titleKey) seenInBatch.add(`title:${titleKey}`);
-
-      toInsert.push(item);
-    }
-
-    const inserted =
-      toInsert.length > 0 ? await Content.insertMany(toInsert, { ordered: false }) : [];
-
-    res.status(201).json({
-      ok: true,
-      insertedCount: inserted.length,
-      skippedCount,
-      total: items.length,
-    });
-  } catch (error) {
-    handleError(res, error, "Failed to bulk import contents");
-  }
+// Aynı gerekçeyle (admin/rol sistemi yok) kapatılmıştır — bkz. yukarıdaki not.
+function bulkImportContents(req, res) {
+  res.status(403).json({ ok: false, message: "Bu işlem için yetkiniz yok." });
 }
 
 module.exports = {
