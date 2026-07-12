@@ -2291,7 +2291,7 @@ function App() {
 
           <div className="quick-actions-row">
             <a className="quick-action-primary" href="#new-content-anchor">
-              Yeni içerik ekle
+              İçerik ekle
             </a>
 
             <button

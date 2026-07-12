@@ -1,3 +1,5 @@
+import Button from "./ui/Button";
+
 function ContentForm({
   form,
   handleChange,
@@ -228,23 +230,27 @@ function ContentForm({
         </details>
 
         <div className="form-submit-row">
-          <button type="submit" className="submit-btn">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M8 2.5V13.5M2.5 8H13.5"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-            </svg>
-            İçerik Ekle
-          </button>
+          <Button
+            type="submit"
+            icon={
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M8 2.5V13.5M2.5 8H13.5"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+              </svg>
+            }
+          >
+            İçerik ekle
+          </Button>
         </div>
       </form>
     </section>

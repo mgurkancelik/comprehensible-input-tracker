@@ -785,7 +785,7 @@ button:disabled {
 }
 
 .ui-chip--md {
-  min-height: 40px;
+  min-height: 44px;
   padding: var(--space-2) var(--space-4);
   font-size: var(--font-size-sm);
 }
@@ -800,11 +800,23 @@ button:disabled {
 }
 
 .ui-chip--filter {
+  /* Label için on-surface-variant (text-muted) yerine daha güçlü on-surface
+     rolü kullanılıyor — chip'in kendi container'ı çoğu zaman içinde
+     bulunduğu .form-section ile aynı surface-alt tonunu paylaştığı için
+     (bkz. .discover-page), text-muted dark theme'de gereğinden soluk
+     kalıyordu. on-surface hem seçili durumla (farklı renk ailesi: primary-
+     container) karışmıyor hem de kontrastı ciddi biçimde güçlendiriyor. */
   background: var(--color-surface-alt);
-  color: var(--color-text-muted);
+  color: var(--color-text);
 }
 
-.ui-chip--filter:hover:not(:disabled) {
+/* :not(.ui-chip--selected) ile bu kural seçili chip'i hiç eşlemez — aksi
+   halde bu hover kuralı (2 pseudo-class) .ui-chip--filter.ui-chip--selected
+   (2 class) kuralından daha yüksek specificity'ye sahip olduğu için seçili
+   border rengini ezerdi. Hover artık sadece border'ı değil, container'ı da
+   (surface-alt → surface) tonal olarak değiştiriyor. */
+.ui-chip--filter:hover:not(:disabled):not(.ui-chip--selected) {
+  background: var(--color-surface);
   border-color: var(--color-text-muted);
 }
 
@@ -813,6 +825,17 @@ button:disabled {
   color: var(--color-selected-text);
   border-color: var(--color-primary);
   font-weight: 700;
+}
+
+/* Seçili chip hover'da da seçili rengini korur — label/on-color asla
+   değişmez, sadece container tonal olarak hafifçe koyulaşır. */
+.ui-chip--filter.ui-chip--selected:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--color-selected-bg) 88%,
+    var(--color-selected-text) 12%
+  );
+  border-color: var(--color-primary);
 }
 
 .ui-chip--status {
@@ -1618,8 +1641,11 @@ button:disabled {
   transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.discover-tabs button:hover,
-.library-tabs button:hover {
+/* :not(.nav-active) ile bu kural seçili sekmeyi hiç eşlemez — böylece
+   "seçili + hover" durumu specificity yarışına girmeden, aşağıdaki özel
+   kurala (bkz. .nav-active:hover) bırakılır. */
+.discover-tabs button:hover:not(:disabled):not(.nav-active),
+.library-tabs button:hover:not(:disabled):not(.nav-active) {
   background: var(--color-surface);
   color: var(--color-heading);
   border-color: var(--color-text-muted);
@@ -1631,6 +1657,18 @@ button:disabled {
   color: var(--color-selected-text);
   border-color: var(--color-primary);
   font-weight: 700;
+}
+
+/* Seçili sekme hover'da da seçili rengini korur — label/on-color asla
+   değişmez, sadece container tonal olarak hafifçe koyulaşır. */
+.discover-tabs .nav-active:hover:not(:disabled),
+.library-tabs .nav-active:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--color-selected-bg) 88%,
+    var(--color-selected-text) 12%
+  );
+  border-color: var(--color-primary);
 }
 
 .discover-result-count {
