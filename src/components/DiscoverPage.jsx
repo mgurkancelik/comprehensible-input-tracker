@@ -77,6 +77,7 @@ function DiscoverPage({
   getItemStatusLabel,
   onAlreadyAdded,
   onAddToWatchlist,
+  isSavingContent,
   contents,
   updatingContentId,
   onSyncSeriesTotalEpisodes,
@@ -384,6 +385,7 @@ function DiscoverPage({
               onAlreadyAdded={() => onAlreadyAdded?.(item)}
               onOpenDetail={() => setSelectedItem(item)}
               levelFilter={levelFilter}
+              isSaving={isSavingContent}
             />
           ))}
         </div>

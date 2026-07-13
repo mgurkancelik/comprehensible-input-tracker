@@ -1941,6 +1941,106 @@ button:disabled {
   animation: poster-skeleton-pulse 1.4s ease-in-out infinite;
 }
 
+.ui-snackbar-viewport {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 200;
+  width: min(420px, calc(100vw - var(--space-5) * 2));
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.ui-snackbar {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  background: var(--md-sys-color-surface-container-highest);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--md-sys-elevation-level4);
+  animation: ui-snackbar-in 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-snackbar {
+    animation: none;
+  }
+}
+
+@keyframes ui-snackbar-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ui-snackbar--success {
+  border-left-color: var(--color-success);
+}
+
+.ui-snackbar--error {
+  border-left-color: var(--color-danger);
+}
+
+.ui-snackbar--info {
+  border-left-color: var(--color-primary);
+}
+
+.ui-snackbar__icon {
+  flex-shrink: 0;
+  font-size: var(--font-size-lg);
+  line-height: 1;
+  margin-top: 1px;
+}
+
+.ui-snackbar__message {
+  flex: 1;
+  min-width: 0;
+  color: var(--color-text);
+  font-size: var(--font-size-md);
+  line-height: 1.4;
+}
+
+.ui-snackbar__close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+
+.ui-snackbar__close:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+@media (max-width: 640px) {
+  .ui-snackbar-viewport {
+    left: var(--space-4);
+    right: var(--space-4);
+    bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+    transform: none;
+    width: auto;
+  }
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;

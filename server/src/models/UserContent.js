@@ -10,6 +10,32 @@ const watchLogSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Detaylı sezon/bölüm ilerlemesi — kullanıcıya özel, bu yüzden ortak Content
+// kataloğu yerine burada (UserContent) tutulur. Yalnızca İZLENMİŞ bölümler
+// saklanır (seyrek/sparse liste): TMDb'den her açılışta yeniden gelebilecek
+// başlık/süre/özet gibi katalog verisi burada TEKRARLANMAZ — yalnızca
+// "hangi bölüm, ne zaman izlendi" bilgisi kalıcı olur. episodeCount, bu
+// sezonun toplam bölüm sayısını (frontend'in modal açılmadan önce doğru
+// "X/Y" özetini gösterebilmesi için) taşır; TMDb'nin kendisi değil, en son
+// bilinen değeridir.
+const episodeProgressSchema = new mongoose.Schema(
+  {
+    episodeNumber: { type: Number, required: true },
+    watched: { type: Boolean, default: true },
+    watchedAt: { type: String, default: null },
+  },
+  { _id: false }
+);
+
+const seasonProgressSchema = new mongoose.Schema(
+  {
+    seasonNumber: { type: Number, required: true },
+    episodeCount: { type: Number, default: 0, min: 0 },
+    episodes: { type: [episodeProgressSchema], default: [] },
+  },
+  { _id: false }
+);
+
 const userContentSchema = new mongoose.Schema(
   {
     userId: {
@@ -67,6 +93,7 @@ const userContentSchema = new mongoose.Schema(
     },
     notes: { type: String, default: "" },
     watchLogs: { type: [watchLogSchema], default: [] },
+    seasons: { type: [seasonProgressSchema], default: [] },
     startDate: { type: String, default: "" },
     finishDate: { type: String, default: "" },
   },

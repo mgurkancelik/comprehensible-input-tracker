@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import StatsPanel from "./components/StatsPanel";
-import RecommendationsPage from "./components/RecommendationsPage";
 import ContentForm from "./components/ContentForm";
 import DiscoverPage from "./components/DiscoverPage";
 import ContentDetailModal from "./components/ContentDetailModal";
@@ -13,12 +12,15 @@ import Modal from "./components/ui/Modal";
 import Chip from "./components/ui/Chip";
 import LoadingState from "./components/ui/LoadingState";
 import ErrorState from "./components/ui/ErrorState";
+import Snackbar from "./components/ui/Snackbar";
 import {
   getTotalInputMinutes,
   getMinutesInRange,
   getDailyInputBuckets,
   getMonthlyInputSummary,
   getInputRecordCounts,
+  getMovieStats,
+  getWatchedMovies,
   formatMinutesLabel,
 } from "./utils/stats";
 import {
@@ -89,6 +91,84 @@ function extractTmdbNumericId(rawId) {
 function toPositiveEpisodeCount(value) {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
+}
+
+// content.seasons'ın (frontend'in TMDb ile canlı birleştirilmiş, her bölüm
+// için id/name/runtime/airDate/overview gibi katalog verisi de taşıyan tam
+// hâli) backend'e kalıcı olarak yazılacak, yalnızca kullanıcıya özel kısmını
+// çıkarır: hangi sezonun hangi bölümü izlenmiş ve ne zaman. TMDb'den her
+// yeniden yüklemede tazelenebilecek katalog alanları (isim/süre/özet) bu
+// payload'a hiç dahil edilmez — bu, hem gereksiz veri tekrarını hem de bu
+// alanların bir gün TMDb'de değişip kalıcı kayıtla tutarsızlaşmasını önler.
+// Yalnızca İZLENMİŞ bölümler taşınır (seyrek liste); episodeCount, o
+// sezonun bilinen toplam bölüm sayısını (frontend'in modal açılmadan önce
+// doğru "x/y" özetini gösterebilmesi için) ayrıca taşır.
+function buildPersistableSeasons(seasons) {
+  return (seasons || [])
+    .filter((season) => Array.isArray(season.episodes) && season.episodes.length > 0)
+    .map((season) => ({
+      seasonNumber: season.seasonNumber,
+      episodeCount: season.episodes.length,
+      episodes: season.episodes
+        .filter((episode) => episode.watched)
+        .map((episode) => ({
+          episodeNumber: episode.episodeNumber,
+          watched: true,
+          watchedAt: episode.watchedAt || null,
+        })),
+    }));
+}
+
+// "+1 bölüm izledim" ve "Tümünü izledim", detaylı sezon/bölüm verisi zaten
+// biliniyorsa (kullanıcı en az bir kez "Bölümleri Yönet"i açtıysa) AYNI
+// canonical bölüm listesinde yayın sırasına göre bir sonraki `count`
+// izlenmemiş bölümü de işaretler — böylece basit sayaç ile detaylı
+// checkbox sistemi her zaman senkron kalır (üç aksiyon da aynı canonical
+// ilerleme sistemini kullanır). Sezon verisi hiç yoksa (yalnızca basit
+// takip kullanılıyorsa) çağıran taraf bu fonksiyonu hiç çağırmaz.
+function markNextUnwatchedEpisodes(seasons, count, today) {
+  let remaining = count;
+
+  const seasonOrder = [
+    ...seasons
+      .filter((season) => season.seasonNumber !== 0)
+      .sort((a, b) => a.seasonNumber - b.seasonNumber),
+    ...seasons.filter((season) => season.seasonNumber === 0),
+  ];
+
+  const updatedEpisodesBySeasonNumber = new Map();
+
+  for (const season of seasonOrder) {
+    if (remaining <= 0) {
+      break;
+    }
+
+    const sortedEpisodes = [...season.episodes].sort(
+      (a, b) => a.episodeNumber - b.episodeNumber
+    );
+
+    let changed = false;
+
+    const nextEpisodes = sortedEpisodes.map((episode) => {
+      if (remaining > 0 && !episode.watched) {
+        remaining -= 1;
+        changed = true;
+        return { ...episode, watched: true, watchedAt: today };
+      }
+
+      return episode;
+    });
+
+    if (changed) {
+      updatedEpisodesBySeasonNumber.set(season.seasonNumber, nextEpisodes);
+    }
+  }
+
+  return seasons.map((season) =>
+    updatedEpisodesBySeasonNumber.has(season.seasonNumber)
+      ? { ...season, episodes: updatedEpisodesBySeasonNumber.get(season.seasonNumber) }
+      : season
+  );
 }
 
 // Kullanıcının kütüphanesinde (contents state) eklenmek istenen adayla
@@ -240,7 +320,23 @@ function mapUserContentToFrontendContent(userContent) {
     minutesPerEpisode: contentData.episodeDuration || 0,
     wordsPerEpisode: contentData.wordsPerEpisode || 0,
     tmdbRating: contentData.rating || null,
-    seasons: contentData.seasons || [],
+    // Detaylı sezon/bölüm ilerlemesi kullanıcıya özeldir — ortak Content
+    // kataloğundan (contentData) DEĞİL, UserContent'in kendi kalıcı
+    // seasons alanından okunur. Backend'de yalnızca İZLENMİŞ bölümler
+    // saklanıyor (seyrek liste); her sezonun gerçek toplam bölüm sayısı
+    // ayrıca episodeCount'ta tutulur (bkz. UserContent.js). TMDb'den gelen
+    // başlık/süre/özet gibi görüntüleme alanları burada yok — modal
+    // açıldığında syncSeasonEpisodes tarafından canlı TMDb verisiyle
+    // birleştirilip tamamlanır.
+    seasons: (userContent.seasons || []).map((season) => ({
+      seasonNumber: season.seasonNumber,
+      episodeCount: season.episodeCount || 0,
+      episodes: (season.episodes || []).map((episode) => ({
+        episodeNumber: episode.episodeNumber,
+        watched: episode.watched !== false,
+        watchedAt: episode.watchedAt || null,
+      })),
+    })),
     status: API_STATUS_TO_FRONTEND_STATUS[userContent.status] || "İzleyecekler",
     watchedMinutes: userContent.watchedMinutes,
     watchedPercentage: userContent.watchedPercentage,
@@ -248,7 +344,17 @@ function mapUserContentToFrontendContent(userContent) {
     notes: userContent.notes || "",
     watchLogs: userContent.watchLogs || [],
     startDate: userContent.startDate || "",
+    // KÖK NEDEN (Görev 2): backend'in kalıcı `finishDate` alanı buraya hiç
+    // eşlenmiyordu — uygulamanın geri kalanı (setContentStatus, renderContentCard,
+    // saveContentToBackend'in payload'ı) bu tarihi hep `completedDate` adıyla
+    // okuyordu. Sonuç: sayfa yenilendikten sonra `content.completedDate`
+    // her zaman undefined kalıyordu — kart "Henüz bitmedi" gösteriyordu VE
+    // içerik tekrar "İzlediklerim" seçilirse gerçek geçmiş tarih yerine
+    // sessizce bugünün tarihiyle eziliyordu. İkisi de aynı kalıcı değere
+    // işaret eder; iki isim de set edilir (mevcut ~10 `.completedDate`
+    // kullanım noktası değiştirilmeden).
     finishDate: userContent.finishDate || "",
+    completedDate: userContent.finishDate || "",
   };
 }
 
@@ -336,6 +442,11 @@ const STATUS_OPTIONS = [
   { value: "İzleniyor", label: "İzliyorum" },
   { value: "İzlediklerim", label: "İzledim" },
 ];
+
+// Snackbar türüne göre otomatik kapanma süresi (ms) — hatalar biraz daha
+// uzun kalır (kullanıcı okuyup aksiyon alacak zamanı olsun), üzerine gelince/
+// odaklanınca zaten duraklatılır (bkz. ui/Snackbar.jsx).
+const SNACKBAR_DURATIONS = { success: 4000, info: 4000, error: 7000 };
 
 const STATUS_META = {
   İzleyecekler: { label: "İzleyeceğim", badgeClassName: "" },
@@ -496,6 +607,10 @@ function App() {
   }, []);
 
   const handleLogin = async ({ email, password }) => {
+    if (isAuthSubmitting) {
+      return;
+    }
+
     setIsAuthSubmitting(true);
     setAuthError(null);
 
@@ -516,6 +631,10 @@ function App() {
   };
 
   const handleRegister = async ({ name, email, password }) => {
+    if (isAuthSubmitting) {
+      return;
+    }
+
     setIsAuthSubmitting(true);
     setAuthError(null);
 
@@ -587,10 +706,34 @@ function App() {
   const [contentsError, setContentsError] = useState(null);
 
   // Tüm "içerik ekleme" akışları (manuel form, öneri, Keşfet) bu ortak
-  // guard'ı ve feedback state'ini paylaşır — aynı anda çakışan çift
-  // gönderimi engeller, tek bir yerden başarı/hata mesajı gösterir.
+  // guard'ı paylaşır — aynı anda çakışan çift gönderimi engeller.
   const [isSavingContent, setIsSavingContent] = useState(false);
-  const [contentAddFeedback, setContentAddFeedback] = useState(null);
+
+  // Uygulama genelindeki TÜM global işlem geri bildirimleri (içerik ekleme/
+  // silme/durum güncelleme/not kaydetme vb. — ContentForm/TmdbMatchPicker
+  // gibi bileşenlere ÖZGÜ, bağlamsal mesajlar hariç) için TEK, ortak state.
+  // ui/Snackbar.jsx bunu ekranın altında role="status"/"alert" + aria-live
+  // ile, sayfa neresinde olursa olsun gösterir.
+  const [snackbar, setSnackbar] = useState(null);
+
+  // Geriye dönük olarak tüm çağıranlar {type, text} şekliyle çağırır — bu,
+  // canonical { id, type, message, duration } Snackbar objesine çevirir.
+  // `showFeedback(null)` (veya feedback'siz çağrı) mevcut bildirimi kapatır.
+  const showFeedback = (feedback) => {
+    if (!feedback) {
+      setSnackbar(null);
+      return;
+    }
+
+    setSnackbar({
+      id: Date.now(),
+      type: feedback.type,
+      message: feedback.text,
+      duration: SNACKBAR_DURATIONS[feedback.type] ?? SNACKBAR_DURATIONS.info,
+    });
+  };
+
+  const dismissSnackbar = () => setSnackbar(null);
 
   // Manuel formda "TMDb ile Eşleştir" ile seçilen kanonik kimlik verisi.
   // Yalnızca { tmdbId, sourceId, mediaType, title, posterUrl, overview,
@@ -866,6 +1009,7 @@ function App() {
     setTmdbAutofilledFields(INITIAL_TMDB_AUTOFILLED_FIELDS);
     setTmdbMatch(null);
     setTmdbManualOverride(false);
+    showFeedback({ type: "info", text: "Eşleşme kaldırıldı." });
   };
 
   // TmdbMatchPicker'daki "Manuel devam et": kullanıcı TMDb sonucu
@@ -905,7 +1049,7 @@ function App() {
     event.preventDefault();
 
     if (form.title.trim() === "") {
-      alert("İçerik adı boş olamaz.");
+      showFeedback({ type: "error", text: "İçerik adı boş olamaz." });
       return;
     }
 
@@ -1011,7 +1155,7 @@ function App() {
     const existingMatch = findExistingContentForCandidate(contents, newContent);
 
     if (existingMatch) {
-      setContentAddFeedback({
+      showFeedback({
         type: "error",
         text: "Bu içerik zaten kütüphanende var.",
       });
@@ -1019,7 +1163,7 @@ function App() {
     }
 
     setIsSavingContent(true);
-    setContentAddFeedback(null);
+    showFeedback(null);
 
     const result = await saveContentToBackend(
       newContent,
@@ -1029,18 +1173,18 @@ function App() {
 
     if (result.status === "success") {
       setContents((prevContents) => [...prevContents, result.content]);
-      setContentAddFeedback({
+      showFeedback({
         type: "success",
         text: "İçerik eklendi ve kütüphanene kaydedildi.",
       });
     } else if (result.status === "duplicate") {
-      setContentAddFeedback({
+      showFeedback({
         type: "error",
         text: "Bu içerik zaten kütüphanende var.",
       });
     } else {
       setContents((prevContents) => [...prevContents, newContent]);
-      setContentAddFeedback({
+      showFeedback({
         type: "error",
         text: "Backend'e kaydedilemedi, yerel olarak eklendi.",
       });
@@ -1082,12 +1226,12 @@ function App() {
       setContents((prevContents) =>
         prevContents.filter((content) => content.id !== id)
       );
-      setContentAddFeedback({ type: "success", text: "Yerel kayıt silindi." });
+      showFeedback({ type: "success", text: "Yerel kayıt silindi." });
       return;
     }
 
     setDeletingContentId(id);
-    setContentAddFeedback(null);
+    showFeedback(null);
 
     try {
       await deleteUserContent(item.backendUserContentId, authToken);
@@ -1095,7 +1239,7 @@ function App() {
       setContents((prevContents) =>
         prevContents.filter((content) => content.id !== id)
       );
-      setContentAddFeedback({
+      showFeedback({
         type: "success",
         text: "İçerik kütüphanenden silindi.",
       });
@@ -1104,12 +1248,12 @@ function App() {
         setContents((prevContents) =>
           prevContents.filter((content) => content.id !== id)
         );
-        setContentAddFeedback({
+        showFeedback({
           type: "error",
           text: "Backend'de kayıt bulunamadı, yerel kayıt temizlendi.",
         });
       } else {
-        setContentAddFeedback({
+        showFeedback({
           type: "error",
           text: "Silme işlemi başarısız oldu, içerik ekranda kaldı.",
         });
@@ -1126,12 +1270,12 @@ function App() {
   function syncSummaryToBackendInBackground(content, apiPayload) {
     saveUserContentUpdate(content, apiPayload, authToken).then((result) => {
       if (result.status === "error") {
-        setContentAddFeedback({
+        showFeedback({
           type: "error",
           text: "Güncelleme MongoDB'ye kaydedilemedi.",
         });
       } else if (result.status === "not_found") {
-        setContentAddFeedback({
+        showFeedback({
           type: "error",
           text: "Backend'de kayıt bulunamadı, yerel olarak güncellendi.",
         });
@@ -1160,9 +1304,19 @@ function App() {
     const newWatchedEpisodes = watchedEpisodes + 1;
     const isFinished = newWatchedEpisodes >= totalEpisodes;
 
+    // Sezon/bölüm verisi zaten biliniyorsa (kullanıcı en az bir kez
+    // "Bölümleri Yönet"i açtıysa), aynı canonical bölüm listesinde bir
+    // sonraki izlenmemiş bölüm de işaretlenir — üç aksiyon (bkz. dosya
+    // başındaki markNextUnwatchedEpisodes yorumu) hep senkron kalır.
+    const hasSeasonData = Boolean(content.seasons && content.seasons.length > 0);
+    const updatedSeasons = hasSeasonData
+      ? markNextUnwatchedEpisodes(content.seasons, 1, today)
+      : content.seasons;
+
     const updatedContent = {
       ...content,
       watchedEpisodes: newWatchedEpisodes,
+      seasons: updatedSeasons,
       status: isFinished ? "İzlediklerim" : "İzleniyor",
       completedDate: isFinished ? today : content.completedDate,
       watchLogs: [
@@ -1192,13 +1346,16 @@ function App() {
     // sayfa yenilenince (veya bir sonraki oturumda) kaybolur. "Aylık Özet"
     // ve günlük grafikler bu tarihli kayıtları kullanır (bkz. stats.js
     // getContentDatedEntries) — watchLogs backend'e gitmeden bu ekranlar
-    // gerçek aktiviteye rağmen boş görünmeye devam eder.
+    // gerçek aktiviteye rağmen boş görünmeye devam eder. seasons yalnızca
+    // gerçekten biliniyorsa gönderilir (hasSeasonData) — bilinmiyorsa
+    // payload'a hiç eklenmez, mevcut (boş) backend değeri olduğu gibi kalır.
     syncSummaryToBackendInBackground(content, {
       watchedEpisodes: newWatchedEpisodes,
       watchedMinutes,
       watchedPercentage,
       status: FRONTEND_STATUS_TO_API_STATUS[updatedContent.status] || "watching",
       watchLogs: updatedContent.watchLogs,
+      ...(hasSeasonData ? { seasons: buildPersistableSeasons(updatedSeasons) } : {}),
     });
   };
 
@@ -1222,9 +1379,20 @@ function App() {
     const watchedEpisodes = Math.floor(toSafeNumber(content.watchedEpisodes));
     const remainingEpisodes = Math.max(totalEpisodes - watchedEpisodes, 0);
 
+    // Not: bu buton bugün UI'da yalnızca sezon verisi HENÜZ bilinmiyorken
+    // gösteriliyor (bkz. renderContentCard'daki !isSeasonTracked koşulu) —
+    // ama watchOneEpisode ile aynı canonical davranışı korumak için burada
+    // da hasSeasonData kontrolü uygulanır (örn. doğrudan API/gelecekte
+    // farklı bir giriş noktasından çağrılırsa bile tutarlı kalsın diye).
+    const hasSeasonData = Boolean(content.seasons && content.seasons.length > 0);
+    const updatedSeasons = hasSeasonData
+      ? markNextUnwatchedEpisodes(content.seasons, Infinity, today)
+      : content.seasons;
+
     const updatedContent = {
       ...content,
       watchedEpisodes: totalEpisodes,
+      seasons: updatedSeasons,
       status: "İzlediklerim",
       completedDate: content.completedDate || today,
       watchLogs: [
@@ -1253,6 +1421,7 @@ function App() {
       status: "completed",
       finishDate: updatedContent.completedDate || today,
       watchLogs: updatedContent.watchLogs,
+      ...(hasSeasonData ? { seasons: buildPersistableSeasons(updatedSeasons) } : {}),
     });
   };
 
@@ -1303,52 +1472,6 @@ function App() {
       releaseYear,
       seasons,
     };
-  };
-
-  const addRecommendationToWatchLater = async (recommendation) => {
-    if (isSavingContent) {
-      return;
-    }
-
-    if (!requireAuthAction()) {
-      return;
-    }
-
-    const newContent = buildWatchlistContent({
-      title: recommendation.title,
-      type: recommendation.type,
-      minutesPerEpisode: recommendation.minutesPerEpisode,
-    });
-
-    setIsSavingContent(true);
-    setContentAddFeedback(null);
-
-    const result = await saveContentToBackend(
-      newContent,
-      newContent.status,
-      authToken
-    );
-
-    if (result.status === "success") {
-      setContents((prevContents) => [...prevContents, result.content]);
-      setContentAddFeedback({
-        type: "success",
-        text: "İçerik izleyeceklerine eklendi.",
-      });
-    } else if (result.status === "duplicate") {
-      setContentAddFeedback({
-        type: "error",
-        text: "Bu içerik zaten kütüphanende var.",
-      });
-    } else {
-      setContents((prevContents) => [...prevContents, newContent]);
-      setContentAddFeedback({
-        type: "error",
-        text: "Backend'e kaydedilemedi, yerel olarak eklendi.",
-      });
-    }
-
-    setIsSavingContent(false);
   };
 
   // Keşfet öğesine karşılık gelen kayıtlı content'i (varsa) bulur.
@@ -1413,7 +1536,7 @@ function App() {
 
     const statusLabel = STATUS_META[getStatus(existing)]?.label || getStatus(existing);
 
-    setContentAddFeedback({
+    showFeedback({
       type: "info",
       text: `Bu içerik zaten kütüphanende. Mevcut durum: ${statusLabel}.`,
     });
@@ -1442,7 +1565,7 @@ function App() {
     // set edilmez) — yalnızca bunun zaten mevcut durum olduğunu belirten
     // görünür bir bilgi mesajı gösterilir.
     if (getStatus(content) === status) {
-      setContentAddFeedback({
+      showFeedback({
         type: "info",
         text: "Bu içerik zaten bu durumda.",
       });
@@ -1453,25 +1576,40 @@ function App() {
     const isCompleted = status === "İzlediklerim";
     const isWatching = status === "İzleniyor";
 
+    // Canonical film/içerik bitiş tarihi önceliği: 1) kullanıcının/backend'in
+    // ZATEN sahip olduğu geçerli bir tarih varsa o korunur (bir daha asla
+    // bugünle sessizce ezilmez), 2) yalnızca içerik İLK KEZ "İzlediklerim"e
+    // geçiyorsa (henüz hiç tarihi yoksa) bugünün tarihi yazılır.
+    const resolvedCompletedDate = isCompleted
+      ? content.completedDate || today
+      : content.completedDate;
+
     const nextLocalContent = {
       ...content,
       status,
       startDate:
         content.startDate ||
         (isWatching || isCompleted ? today : content.startDate),
-      completedDate: isCompleted
-        ? content.completedDate || today
-        : content.completedDate,
+      completedDate: resolvedCompletedDate,
+      finishDate: resolvedCompletedDate,
     };
 
     setUpdatingContentId(contentId);
-    setContentAddFeedback(null);
+    showFeedback(null);
 
-    const result = await saveUserContentUpdate(
-      content,
-      { status: FRONTEND_STATUS_TO_API_STATUS[status] || "watchlist" },
-      authToken
-    );
+    // Tarih ve status aynı PUT isteğinde birlikte gönderilir — aksi halde
+    // (önceki davranış) yalnızca status kaydediliyor, finishDate hiç
+    // backend'e ulaşmıyordu (bkz. mapUserContentToFrontendContent'teki kök
+    // neden notu). Yalnızca "İzlediklerim"e geçişte ve geçerli bir tarih
+    // varken finishDate payload'a eklenir; diğer durumlarda mevcut backend
+    // değeri olduğu gibi kalır.
+    const apiPayload = { status: FRONTEND_STATUS_TO_API_STATUS[status] || "watchlist" };
+
+    if (isCompleted && resolvedCompletedDate) {
+      apiPayload.finishDate = resolvedCompletedDate;
+    }
+
+    const result = await saveUserContentUpdate(content, apiPayload, authToken);
 
     if (result.status === "success" || result.status === "local") {
       setContents((prevContents) =>
@@ -1480,7 +1618,7 @@ function App() {
         )
       );
 
-      setContentAddFeedback(
+      showFeedback(
         result.status === "success"
           ? { type: "success", text: "Durum güncellendi." }
           : { type: "success", text: "Yerel kayıt güncellendi." }
@@ -1492,12 +1630,12 @@ function App() {
         )
       );
 
-      setContentAddFeedback({
+      showFeedback({
         type: "error",
         text: "Backend'de kayıt bulunamadı, yerel olarak güncellendi.",
       });
     } else {
-      setContentAddFeedback({
+      showFeedback({
         type: "error",
         text: "Güncelleme MongoDB'ye kaydedilemedi.",
       });
@@ -1527,7 +1665,7 @@ function App() {
       if (currentStatus === status) {
         const statusLabel = STATUS_META[currentStatus]?.label || currentStatus;
 
-        setContentAddFeedback({
+        showFeedback({
           type: "info",
           text: `Bu içerik zaten kütüphanende. Mevcut durum: ${statusLabel}.`,
         });
@@ -1569,7 +1707,7 @@ function App() {
       });
 
     setIsSavingContent(true);
-    setContentAddFeedback(null);
+    showFeedback(null);
 
     const result = await saveContentToBackend(localContent, status, authToken);
 
@@ -1597,25 +1735,25 @@ function App() {
         setContents((prevContents) => [...prevContents, mergedContent]);
       }
 
-      setContentAddFeedback({
+      showFeedback({
         type: "success",
         text: "İçerik kütüphanene eklendi.",
       });
     } else if (result.status === "duplicate") {
-      setContentAddFeedback({
+      showFeedback({
         type: "error",
         text: "Bu içerik zaten kütüphanende var.",
       });
     } else if (!existingContent) {
       setContents((prevContents) => [...prevContents, localContent]);
-      setContentAddFeedback({
+      showFeedback({
         type: "error",
         text: "Backend'e kaydedilemedi, yerel olarak eklendi.",
       });
     } else {
       // existingContent zaten localStorage'da duruyor, tekrar eklemeye
       // gerek yok — sadece hatayı bildir.
-      setContentAddFeedback({
+      showFeedback({
         type: "error",
         text: "Backend'e kaydedilemedi, yerel olarak eklendi.",
       });
@@ -1686,26 +1824,32 @@ function App() {
   };
 
   // Bir sezonun bölümleri (getSeasonDetails) yüklenince content.seasons'ı
-  // günceller. Bu fonksiyon YALNIZCA modalın açılması/sezon görüntülenmesi
+  // TMDb'nin canlı verisiyle (isim/süre/özet gibi görüntüleme alanları)
+  // birleştirir. Bu fonksiyon YALNIZCA modalın açılması/sezon görüntülenmesi
   // yüzünden çalışır — gerçek bir kullanıcı aksiyonu değildir. Bu yüzden
   // `watchedEpisodes` (kalıcı ilerleme özeti) burada ASLA yeniden hesaplanıp
   // ÜZERİNE YAZILMAZ; yalnızca gerçek kullanıcı aksiyonları (watchOneEpisode/
   // markAllWatched/toggleEpisodeWatched/toggleSeasonWatched) onu değiştirir.
   //
-  // Bir sezon bu oturumda İLK KEZ yükleniyorsa (existingSeason yok, yani
-  // kalıcı ayrıntılı episode state'i yok — bkz. bilinen sınırlama: seasons
-  // MongoDB'de saklanmıyor), UI'da göstermek için canonical watchedEpisodes
-  // değeri, yayın sırasına göre bu sezonun ilk N bölümüne watched=true
-  // olarak "hydrate" edilir (N = watchedEpisodes eksi önceden zaten
-  // hydrate/işaretlenmiş diğer sezonlardaki bölüm sayısı). Bu SADECE bir
-  // UI başlangıç durumu temsilidir: watchedEpisodes'e dokunmaz, watchLogs
-  // oluşturmaz, backend'e hiçbir şey göndermez. Sezonlar sırayla (S1, S2, ...)
-  // gezilmediği durumlarda bu hydration kesin olmayabilir — bilinen ve kabul
-  // edilen bir sınırlamadır.
+  // Bu sezon için `content.seasons`'ta ZATEN bir kayıt varsa (existingSeason)
+  // — artık bu, çoğunlukla sayfa yüklenirken MongoDB'den gelen GERÇEK, kalıcı
+  // watched/watchedAt verisidir (bkz. mapUserContentToFrontendContent,
+  // buildPersistableSeasons) — bu değerler episodeNumber eşleştirmesiyle
+  // aynen korunur, TMDb'den yalnızca isim/süre/özet gibi görüntüleme
+  // alanları tazelenir.
   //
-  // Bir sezon DAHA ÖNCE bu oturumda yüklenmiş/senkronlanmışsa (existingSeason
-  // var), o sezonun gerçek watched/watchedAt değerleri (kullanıcının gerçek
-  // tıklamalarından gelmiş olabilir) korunur; hydration bir daha uygulanmaz.
+  // Bu sezon için hiç kayıt yoksa (existingSeason yok — gerçekten hiç
+  // izlenmiş bölümü olmayan bir sezon, ya da bu içerik yalnızca basit
+  // sayaçla (watchOneEpisode/markAllWatched, seasons hiç bilinmeden) takip
+  // edilmişse), UI'da makul bir başlangıç göstermek için canonical
+  // watchedEpisodes değeri, yayın sırasına göre bu sezonun ilk N bölümüne
+  // watched=true olarak "hydrate" edilir (N = watchedEpisodes eksi önceden
+  // zaten bilinen diğer sezonlardaki izlenmiş bölüm sayısı). Bu SADECE bir
+  // UI başlangıç TAHMİNİdir: watchedEpisodes'e dokunmaz, watchLogs
+  // oluşturmaz, backend'e hiçbir şey göndermez — kullanıcı bu sezonda
+  // gerçek bir checkbox'a bastığı an gerçek veri onun yerini alır. Sezonlar
+  // sırayla (S1, S2, ...) gezilmediği durumlarda bu tahmin kesin olmayabilir
+  // — bilinen ve kabul edilen bir sınırlamadır (bkz. rapor).
   const syncSeasonEpisodes = (sourceId, seasonNumber, seasonName, tmdbEpisodes) => {
     setContents((prevContents) =>
       prevContents.map((content) => {
@@ -1802,10 +1946,10 @@ function App() {
 
   // Tek bir bölümün izlendi durumunu değiştirir. Eski içeriklerde seasons
   // yoksa veya eşleşen bölüm bulunamazsa güvenli şekilde hiçbir şey yapmaz.
-  // Detaylı seasons/episodes verisi backend'in UserContent modelinde
-  // desteklenmiyor (sadece watchedEpisodes/watchedMinutes/watchedPercentage/
-  // status gibi özet alanlar var) — bu yüzden seasons sadece localStorage'da
-  // tutulur, backend'e yalnızca özet alanlar gönderilir.
+  // Detaylı seasons/episodes ilerlemesi artık UserContent'te kalıcıdır
+  // (bkz. buildPersistableSeasons) — özet alanların (watchedEpisodes vb.)
+  // yanı sıra hangi spesifik bölümün izlendiği de backend'e yazılır, sayfa
+  // yenilenince kaybolmaz.
   const toggleEpisodeWatched = (sourceId, seasonNumber, episodeId) => {
     if (sourceId == null) {
       return;
@@ -1889,12 +2033,13 @@ function App() {
       watchedPercentage,
       status:
         FRONTEND_STATUS_TO_API_STATUS[getStatus(updatedContent)] || "watching",
+      seasons: buildPersistableSeasons(updatedSeasons),
     });
   };
 
   // Bir sezondaki tüm bölümleri tek seferde işaretler/kaldırır.
-  // toggleEpisodeWatched ile aynı güvenli desen (ve aynı backend özet-alan
-  // sınırlaması), sadece tüm bölümlere uygulanır.
+  // toggleEpisodeWatched ile aynı güvenli desen ve aynı kalıcı
+  // seasons senkronizasyonu, sadece tüm bölümlere uygulanır.
   const toggleSeasonWatched = (sourceId, seasonNumber, markWatched) => {
     if (sourceId == null) {
       return;
@@ -1965,6 +2110,7 @@ function App() {
       watchedPercentage,
       status:
         FRONTEND_STATUS_TO_API_STATUS[getStatus(updatedContent)] || "watching",
+      seasons: buildPersistableSeasons(updatedSeasons),
     });
   };
 
@@ -2018,7 +2164,7 @@ function App() {
     const nextLocalContent = { ...content, notes };
 
     setUpdatingContentId(contentId);
-    setContentAddFeedback(null);
+    showFeedback(null);
 
     const result = await saveUserContentUpdate(content, { notes }, authToken);
 
@@ -2029,7 +2175,7 @@ function App() {
         )
       );
 
-      setContentAddFeedback(
+      showFeedback(
         result.status === "success"
           ? { type: "success", text: "Not güncellendi." }
           : { type: "success", text: "Yerel kayıt güncellendi." }
@@ -2041,12 +2187,12 @@ function App() {
         )
       );
 
-      setContentAddFeedback({
+      showFeedback({
         type: "error",
         text: "Backend'de kayıt bulunamadı, yerel olarak güncellendi.",
       });
     } else {
-      setContentAddFeedback({
+      showFeedback({
         type: "error",
         text: "Güncelleme MongoDB'ye kaydedilemedi.",
       });
@@ -2245,6 +2391,8 @@ function App() {
     const dailyData = getDailyAnalytics();
     const monthlyData = getMonthlyAnalytics();
     const inputRecordCounts = getInputRecordCounts(contents);
+    const movieStats = getMovieStats(contents);
+    const watchedMovies = getWatchedMovies(contents);
 
     const lastDaysMinutes = dailyData.reduce(
       (sum, day) => sum + day.minutes,
@@ -2279,6 +2427,10 @@ function App() {
                 {inputRecordCounts.manual} manuel log ·{" "}
                 {inputRecordCounts.episode} bölüm logu
               </p>
+              <p className="stat-subtext">
+                İzlenen Film: {movieStats.count} · Film İzleme Süresi:{" "}
+                {formatMinutesLabel(movieStats.minutes)}
+              </p>
             </div>
           </div>
         </div>
@@ -2312,6 +2464,12 @@ function App() {
                 <div className="month-stats">
                   <p>Toplam input: {formatMinutesLabel(month.minutes)}</p>
                   <p>Toplam kelime: {month.words.toLocaleString("tr-TR")}</p>
+                  {month.movieCount > 0 && (
+                    <p>
+                      İzlenen film: {month.movieCount} ·{" "}
+                      {formatMinutesLabel(month.movieMinutes)}
+                    </p>
+                  )}
                 </div>
 
                 <ul>
@@ -2325,6 +2483,26 @@ function App() {
             ))
           )}
         </div>
+
+        {watchedMovies.length > 0 && (
+          <div className="monthly-section">
+            <h2>İzlenen Filmler</h2>
+
+            <ul>
+              {watchedMovies.map((movie, index) => (
+                <li key={`${movie.title}-${movie.date}-${index}`}>
+                  {movie.title} —{" "}
+                  {new Date(movie.date).toLocaleDateString("tr-TR", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}{" "}
+                  — {movie.minutes !== null ? `${movie.minutes} dakika` : "Süre bilgisi bulunamadı"}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
     );
   };
@@ -2539,6 +2717,12 @@ function App() {
           </p>
         </div>
 
+        {isMovie && getStatus(item) === "İzlediklerim" && !item.completedDate && (
+          <p className="series-progress-hint">
+            Bu filmin izlenme tarihi olmadığı için aylık takibe eklenemedi.
+          </p>
+        )}
+
         {item.mediaType === "tv" && (
           <div className="series-progress">
             {!itemCanManageEpisodes && (
@@ -2585,7 +2769,14 @@ function App() {
                         const watchedCount = season.episodes.filter(
                           (episode) => episode.watched
                         ).length;
-                        const totalCount = season.episodes.length;
+                        // episodeCount tercih edilir: reload sonrası backend'den
+                        // yalnızca İZLENMİŞ bölümler geldiği için (seyrek liste),
+                        // season.episodes.length modal hiç açılmadan önce yanlış
+                        // (izlenen sayısına eşit) bir toplam gösterirdi.
+                        const totalCount =
+                          season.episodeCount > 0
+                            ? season.episodeCount
+                            : season.episodes.length;
                         const isFull =
                           totalCount > 0 && watchedCount >= totalCount;
 
@@ -2869,8 +3060,8 @@ function App() {
           />
         )}
 
-        {contentAddFeedback && (
-          <p className="empty-text">{contentAddFeedback.text}</p>
+        {snackbar && (
+          <Snackbar key={snackbar.id} {...snackbar} onDismiss={dismissSnackbar} />
         )}
 
         {activePage === "dashboard" && renderDashboardPage()}
@@ -2881,6 +3072,7 @@ function App() {
             getItemStatusLabel={getDiscoveryItemStatusLabel}
             onAlreadyAdded={notifyDiscoveryItemAlreadyAdded}
             onAddToWatchlist={addDiscoveryItemToWatchlist}
+            isSavingContent={isSavingContent}
             contents={contents}
             updatingContentId={updatingContentId}
             onSyncSeriesTotalEpisodes={syncSeriesTotalEpisodes}
@@ -2911,12 +3103,6 @@ function App() {
 
         {activePage === "tracking" && renderTrackingPage()}
 
-        {activePage === "recommendations" && (
-  <RecommendationsPage
-    addRecommendationToWatchLater={addRecommendationToWatchLater}
-  />
-)}
-
         {activePage === "topMovies" &&
           renderSimplePage(
             "Top Rated Filmler",
@@ -2927,12 +3113,6 @@ function App() {
           renderSimplePage(
             "Top Rated Diziler",
             "Yüksek puanlı diziler burada listelenecek."
-          )}
-
-        {activePage === "random" &&
-          renderSimplePage(
-            "Rastgele Öner",
-            "Bugün ne izleyeceğine karar veremiyorsan buradan rastgele içerik önerisi alacaksın."
           )}
 
         {activePage === "about" && (

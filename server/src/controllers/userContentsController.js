@@ -34,6 +34,7 @@ const ALLOWED_USER_CONTENT_FIELDS = [
   "totalEpisodes",
   "notes",
   "watchLogs",
+  "seasons",
   "startDate",
   "finishDate",
 ];

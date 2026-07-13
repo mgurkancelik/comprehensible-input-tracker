@@ -6,6 +6,7 @@ function PosterCard({
   onAlreadyAdded,
   onOpenDetail,
   levelFilter,
+  isSaving,
 }) {
   const handleCardKeyDown = (event) => {
     if (event.target !== event.currentTarget) {
@@ -67,6 +68,10 @@ function PosterCard({
             durumu (İzleyeceğim/İzliyorum/İzledim) seçebileceği detay
             modalını açar; varsayılan "İzleyecekler" durumuna sessizce
             sıfırlamaz. */}
+        {/* isSaving yalnızca isAdded=false durumunda devreye girer: gerçek
+            bir POST isteği yalnızca o dalda atılıyor (bkz. üstteki yorum) —
+            zaten ekli bir içerikte tıklama yerel/senkron kaldığı için
+            başka bir kartın kaydı sürerken bile engellenmesine gerek yok. */}
         <button
           type="button"
           className={`poster-add-btn${isAdded ? " poster-add-btn--added" : ""}`}
@@ -80,6 +85,7 @@ function PosterCard({
               onAdd();
             }
           }}
+          disabled={!isAdded && isSaving}
           aria-label={
             isAdded
               ? `${item.title} zaten listende (${statusLabel || "eklendi"}) — durumu değiştirmek için aç`
