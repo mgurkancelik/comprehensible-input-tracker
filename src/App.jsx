@@ -29,6 +29,10 @@ import {
 } from "./services/userContents";
 import { getContents, createContent } from "./services/contents";
 import { registerUser, loginUser, getCurrentUser } from "./services/auth";
+import {
+  getMediaTypeFromContentType,
+  canManageEpisodes,
+} from "./utils/contentIdentity";
 import "./App.css";
 
 const THEME_STORAGE_KEY = "ciTrackerTheme";
@@ -85,6 +89,54 @@ function extractTmdbNumericId(rawId) {
 function toPositiveEpisodeCount(value) {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
+}
+
+// Kullanıcının kütüphanesinde (contents state) eklenmek istenen adayla
+// (candidate) aynı içerik zaten var mı diye bakar — öncelik sırası:
+// 1) aynı mediaType + tmdbId, 2) aynı sourceId, 3) normalize edilmiş
+// title + type. Bu, saveContentToBackend'e hiç network isteği atmadan
+// önce hızlı bir ön kontrol sağlar; backend'in userId+contentId unique
+// index'i (409) her durumda son güvenlik ağı olarak kalmaya devam eder.
+function findExistingContentForCandidate(contents, candidate) {
+  if (
+    candidate.mediaType &&
+    Number.isInteger(candidate.tmdbId) &&
+    candidate.tmdbId > 0
+  ) {
+    const byTmdbId = contents.find(
+      (item) =>
+        item.mediaType === candidate.mediaType && item.tmdbId === candidate.tmdbId
+    );
+
+    if (byTmdbId) {
+      return byTmdbId;
+    }
+  }
+
+  if (candidate.sourceId) {
+    const bySourceId = contents.find(
+      (item) => item.sourceId && item.sourceId === candidate.sourceId
+    );
+
+    if (bySourceId) {
+      return bySourceId;
+    }
+  }
+
+  const normalizedTitle = (candidate.title || "").trim().toLowerCase();
+  const normalizedType = candidate.type || "";
+
+  if (!normalizedTitle) {
+    return null;
+  }
+
+  return (
+    contents.find(
+      (item) =>
+        (item.title || "").trim().toLowerCase() === normalizedTitle &&
+        (item.type || "") === normalizedType
+    ) || null
+  );
 }
 
 // Herhangi bir "local content" nesnesi (manuel form, öneri veya Keşfet
@@ -297,6 +349,63 @@ const STATUS_META = {
   },
 };
 
+// Manuel içerik formunun TEK canonical başlangıç değeri. Hem ilk render'da
+// (useState) hem başarılı/başarısız bir gönderim sonrası sıfırlamada
+// (persistNewContent) buradan okunur — aynı obje iki ayrı yerde elle
+// kopyalanmaz, bu yüzden bir alan unutulup eski (stale) bir değer bir
+// sonraki içeriğe sızamaz.
+const INITIAL_CONTENT_FORM = {
+  title: "",
+  type: "Dizi",
+  status: "İzleniyor",
+  startDate: "",
+  targetEndDate: "",
+  completedDate: "",
+  totalEpisodes: "",
+  watchedEpisodes: "",
+  minutesPerEpisode: "",
+  wordsPerEpisode: "",
+  comprehension: 0,
+  difficulty: "",
+};
+
+// applyTmdbMatch'in form alanlarına GERÇEKTEN yazdığı (kullanıcının önceden
+// elle girdiği bir değeri olmadığı için doldurduğu) sayısal alanların
+// kaynağını takip eder. Yalnızca bu şekilde işaretli bir alan, eşleşme
+// kaldırılınca veya türün TMDb mediaType kategorisi değişince sıfırlanır —
+// kullanıcının TMDb doldurduktan SONRA elle değiştirdiği bir değer (bkz.
+// handleChange'in totalEpisodes/minutesPerEpisode dalı) bu işaretlemeyi
+// hemen kaldırır ve bir daha asla otomatik silinmez.
+const INITIAL_TMDB_AUTOFILLED_FIELDS = {
+  title: false,
+  totalEpisodes: false,
+  minutesPerEpisode: false,
+};
+
+// Yalnızca hâlâ "TMDb'den otomatik dolmuş, kullanıcı tarafından hiç
+// değiştirilmemiş" olarak işaretli alanları INITIAL_CONTENT_FORM değerine
+// döndürür. clearTmdbMatch ve handleChange'in tür-değişimi dalı aynı
+// mantığı paylaşır — kullanıcının TMDb'den bağımsız, elle girdiği bir
+// değer (title dahil) bu fonksiyonla asla silinmez.
+function clearAutofilledFormValues(baseForm, autofilledFields) {
+  const nextForm = { ...baseForm };
+
+  if (autofilledFields.title) {
+    nextForm.title = INITIAL_CONTENT_FORM.title;
+  }
+
+  if (autofilledFields.totalEpisodes) {
+    nextForm.totalEpisodes = INITIAL_CONTENT_FORM.totalEpisodes;
+  }
+
+  if (autofilledFields.minutesPerEpisode) {
+    nextForm.minutesPerEpisode = INITIAL_CONTENT_FORM.minutesPerEpisode;
+    nextForm.wordsPerEpisode = INITIAL_CONTENT_FORM.wordsPerEpisode;
+  }
+
+  return nextForm;
+}
+
 function App() {
   const [authUser, setAuthUser] = useState(null);
   const [authToken, setAuthToken] = useState(null);
@@ -469,32 +578,10 @@ function App() {
   // olunca aşağıdaki GET effect'i ile MongoDB'den gelir.
   const [contents, setContents] = useState([]);
 
-  const [form, setForm] = useState({
-    title: "",
-    type: "Dizi",
-    status: "İzleniyor",
-    startDate: "",
-    targetEndDate: "",
-    completedDate: "",
-    totalEpisodes: "",
-    watchedEpisodes: "",
-    minutesPerEpisode: "",
-    wordsPerEpisode: "",
-    comprehension: 0,
-    difficulty: "",
-  });
+  const [form, setForm] = useState(INITIAL_CONTENT_FORM);
 
   const [searchText, setSearchText] = useState("");
   const [selectedType, setSelectedType] = useState("Tümü");
-
-  const [showSearch, setShowSearch] = useState("");
-  const [isFetchingShow, setIsFetchingShow] = useState(false);
-  const [showSearchFeedback, setShowSearchFeedback] = useState(null);
-
-  const handleShowSearchChange = (value) => {
-    setShowSearch(value);
-    setShowSearchFeedback(null);
-  };
 
   const [isContentsLoading, setIsContentsLoading] = useState(false);
   const [contentsError, setContentsError] = useState(null);
@@ -504,6 +591,39 @@ function App() {
   // gönderimi engeller, tek bir yerden başarı/hata mesajı gösterir.
   const [isSavingContent, setIsSavingContent] = useState(false);
   const [contentAddFeedback, setContentAddFeedback] = useState(null);
+
+  // Manuel formda "TMDb ile Eşleştir" ile seçilen kanonik kimlik verisi.
+  // Yalnızca { tmdbId, sourceId, mediaType, title, posterUrl, overview,
+  // releaseYear, tmdbRating } alanlarını taşır — bölüm sayısı/süre gibi
+  // sayısal zenginleştirme alanları seçim anında doğrudan `form`'a işlenir
+  // (bkz. applyTmdbMatch), burada tekrar saklanmaz.
+  const [tmdbMatch, setTmdbMatch] = useState(null);
+
+  // Kullanıcı, TMDb eşleştirmesi olmadan Film/Dizi/Anime eklemeyi bilinçli
+  // olarak seçtiğinde ("Manuel devam et" veya submit öncesi karar alanındaki
+  // "Manuel ekle") true olur — bir daha aynı gönderim için tekrar sorulmaz.
+  // Başlık/tür değişince (handleChange) veya yeni bir eşleşme uygulanınca
+  // (applyTmdbMatch) sıfırlanır.
+  const [tmdbManualOverride, setTmdbManualOverride] = useState(false);
+
+  // applyTmdbMatch'in totalEpisodes/minutesPerEpisode'a gerçekten yazıp
+  // yazmadığını alan bazında takip eder (bkz. INITIAL_TMDB_AUTOFILLED_FIELDS
+  // ve clearAutofilledFormValues yorumları).
+  const [tmdbAutofilledFields, setTmdbAutofilledFields] = useState(
+    INITIAL_TMDB_AUTOFILLED_FIELDS
+  );
+
+  // "İçerik ekle" tetiklendiğinde, tür TMDb destekliyorsa (Film/Dizi/Anime)
+  // ama ne bir eşleşme ne de bilinçli bir manuel-devam kararı varsa true
+  // olur — ContentForm bu sırada küçük bir inline "TMDb'de ara / Manuel
+  // ekle" karar alanı gösterir.
+  const [showTmdbDecision, setShowTmdbDecision] = useState(false);
+
+  // TmdbMatchPicker'ın kendi arama fonksiyonunu dışarıdan (submit öncesi
+  // karar alanındaki "TMDb'de ara" butonundan) tetiklemek için kullanılan
+  // sayaç — her artışta TmdbMatchPicker aynı handleSearch'ü çalıştırır,
+  // ayrı bir ikinci arama mantığı yazılmaz.
+  const [tmdbSearchTrigger, setTmdbSearchTrigger] = useState(0);
 
   // Aynı içerik için üst üste silme isteği gönderilmesini engeller (frontend
   // id'sini tutar, aynı anda ikinci bir DELETE gitmesini önler).
@@ -600,16 +720,74 @@ function App() {
   const handleChange = (event) => {
     const { name, value } = event.target;
 
-    // Tür dizi/anime/podcast'ten filme çevrilince, formda kalan eski bölüm
-    // değerlerinin (totalEpisodes/watchedEpisodes) filme yanlışlıkla
-    // kaydedilmesini önlemek için bu iki alan sıfırlanır.
-    if (name === "type" && value === "Film") {
-      setForm({
-        ...form,
-        type: value,
-        totalEpisodes: "",
-        watchedEpisodes: "",
-      });
+    // Kullanıcı, seçili bir TMDb eşleşmesi varken türün TMDb mediaType
+    // kategorisini (Film ↔ Dizi/Anime) değiştirirse eski eşleşme artık
+    // güvenilir değildir. Dizi ↔ Anime arasında geçiş mediaType'ı
+    // değiştirmediği için (ikisi de "tv") eşleşme korunur, yalnızca
+    // canonical `type` etiketi değişir.
+    const isTypeInvalidatingMatch =
+      name === "type" &&
+      tmdbMatch &&
+      getMediaTypeFromContentType(value) !== tmdbMatch.mediaType;
+
+    if (
+      name === "title" &&
+      tmdbMatch &&
+      value.trim().toLowerCase() !== tmdbMatch.title.trim().toLowerCase()
+    ) {
+      setTmdbMatch(null);
+    }
+
+    // Kullanıcı başlığı ya da türü tekrar düzenlerse, daha önce verilmiş
+    // "manuel devam et" kararı ve varsa açık kalmış submit-öncesi karar
+    // alanı da geçersiz sayılır — bir sonraki gönderimde güvenli tarafta
+    // kalınıp tekrar sorulur.
+    if (name === "title" || name === "type") {
+      setTmdbManualOverride(false);
+      setShowTmdbDecision(false);
+    }
+
+    // Kullanıcı title/totalEpisodes/minutesPerEpisode'u doğrudan elle
+    // düzenliyorsa, bu alan artık "TMDb'nin dokunulmamış otomatik değeri"
+    // olmaktan çıkar — bir daha eşleşme kaldırılınca/tür değişince asla
+    // otomatik silinmesin diye işaretleme hemen kaldırılır.
+    if (name === "title" || name === "totalEpisodes" || name === "minutesPerEpisode") {
+      setTmdbAutofilledFields((previous) => ({ ...previous, [name]: false }));
+    }
+
+    // Tür değişince bölüm/süre alanları iki farklı nedenle sıfırlanabilir:
+    // (a) Film'e geçilince "bölüm" kavramı hiç anlamsızlaşır (totalEpisodes/
+    //     watchedEpisodes) — bu, TMDb eşleşmesi olsun olmasın her zaman
+    //     uygulanan mevcut davranıştır.
+    // (b) isTypeInvalidatingMatch true ise (örn. TMDb ile eşleştirilmiş bir
+    //     dizi Podcast/YouTube'a çevriliyor), YALNIZCA hâlâ TMDb'nin
+    //     dokunulmamış otomatik değeri olarak işaretli totalEpisodes/
+    //     minutesPerEpisode/wordsPerEpisode sıfırlanır (clearAutofilledFormValues)
+    //     — kullanıcının TMDb'den bağımsız ya da doldurduktan sonra elle
+    //     değiştirdiği bir değer asla sessizce silinmez. totalEpisodes bu
+    //     şekilde gerçekten sıfırlanırsa, artık anlamsız kalan
+    //     watchedEpisodes de birlikte sıfırlanır.
+    if (name === "type" && (value === "Film" || isTypeInvalidatingMatch)) {
+      let nextForm = { ...form, type: value };
+
+      if (value === "Film") {
+        nextForm.totalEpisodes = INITIAL_CONTENT_FORM.totalEpisodes;
+        nextForm.watchedEpisodes = INITIAL_CONTENT_FORM.watchedEpisodes;
+      }
+
+      if (isTypeInvalidatingMatch) {
+        const totalEpisodesBefore = nextForm.totalEpisodes;
+        nextForm = clearAutofilledFormValues(nextForm, tmdbAutofilledFields);
+
+        if (nextForm.totalEpisodes !== totalEpisodesBefore) {
+          nextForm.watchedEpisodes = INITIAL_CONTENT_FORM.watchedEpisodes;
+        }
+
+        setTmdbMatch(null);
+        setTmdbAutofilledFields(INITIAL_TMDB_AUTOFILLED_FIELDS);
+      }
+
+      setForm(nextForm);
       return;
     }
 
@@ -619,6 +797,101 @@ function App() {
     });
   };
 
+  // TmdbMatchPicker'da bir sonuç seçildiğinde çağrılır. Form başlığını
+  // seçilen TMDb başlığıyla senkronlar (bu, handleChange'in title-değişti
+  // temizleme kuralını TETİKLEMEZ çünkü bu güncelleme handleChange'in
+  // <input onChange>'i üzerinden değil, doğrudan setForm ile yapılır).
+  // Kullanıcının önceden elle girdiği bölüm süresi/toplam bölüm gibi
+  // geçerli (>0) değerler asla sessizce ezilmez — yalnızca alan boş/0 ise
+  // TMDb'den gelen güvenilir değerle doldurulur.
+  const applyTmdbMatch = (match) => {
+    const { totalEpisodes: tmdbTotalEpisodes, minutesPerEpisode: tmdbMinutes, ...identity } =
+      match;
+
+    // nextAutofilled önceki işaretlemeleri korur (spread ile başlar) —
+    // örn. "Değiştir" ile ikinci bir TMDb sonucu seçilip bu seferki sonuç
+    // totalEpisodes döndürmezse, İLK eşleşmeden kalma (hâlâ formda duran)
+    // otomatik-doldurulmuş değer/işaret olduğu gibi kalır.
+    const nextAutofilled = { ...tmdbAutofilledFields, title: true };
+    // title her zaman seçilen TMDb sonucunun başlığıyla senkronlanır (arama
+    // sorgusu genelde kullanıcının kendi tahmini/kısaltmasıdır, eşleşme
+    // seçildikten sonra kanonik başlığın onun yerini alması beklenir).
+    // Bu, işaretlemeyle (title: true) birlikte "Eşleşmeyi kaldır"
+    // seçildiğinde bu başlığın da temizlenebilmesini sağlar (Sorun 2).
+    const nextForm = { ...form, title: identity.title };
+
+    // Alan boşsa/0'sa DOLDUR; alan hâlâ ÖNCEKİ bir TMDb eşleşmesinin
+    // dokunulmamış otomatik değerini taşıyorsa da GÜNCELLE ("Değiştir" ile
+    // ikinci bir sonuç seçildiğinde ilk eşleşmenin bölüm sayısında takılı
+    // kalınmasın). Yalnızca kullanıcının kendi elle girdiği (autofilled
+    // işareti handleChange tarafından kaldırılmış) bir değer korunur.
+    if (
+      (toSafeNumber(form.totalEpisodes) <= 0 || tmdbAutofilledFields.totalEpisodes) &&
+      Number.isInteger(tmdbTotalEpisodes) &&
+      tmdbTotalEpisodes > 0
+    ) {
+      nextForm.totalEpisodes = tmdbTotalEpisodes;
+      nextAutofilled.totalEpisodes = true;
+    }
+
+    if (
+      (toSafeNumber(form.minutesPerEpisode) <= 0 || tmdbAutofilledFields.minutesPerEpisode) &&
+      typeof tmdbMinutes === "number" &&
+      tmdbMinutes > 0
+    ) {
+      nextForm.minutesPerEpisode = tmdbMinutes;
+      nextAutofilled.minutesPerEpisode = true;
+
+      // wordsPerEpisode BİLEREK otomatik doldurulmuz: TMDb kelime/bölüm
+      // verisi sağlamıyor, "dakika × 120" gibi bir çarpım gerçek bir TMDb
+      // değeriymiş gibi sunulursa yanıltıcı olur. Kullanıcı isterse bu
+      // alanı kendisi doldurur.
+    }
+
+    setForm(nextForm);
+    setTmdbAutofilledFields(nextAutofilled);
+    setTmdbMatch(identity);
+    setTmdbManualOverride(false);
+    setShowTmdbDecision(false);
+  };
+
+  // "Eşleşmeyi kaldır": tmdbId/sourceId/mediaType gibi kimlik metadata'sının
+  // yanı sıra, hâlâ "TMDb'nin dokunulmamış otomatik değeri" olarak işaretli
+  // totalEpisodes/minutesPerEpisode/wordsPerEpisode de temizlenir (Sorun 1).
+  // Kullanıcının eşleştirdikten SONRA elle değiştirdiği bir değer
+  // (tmdbAutofilledFields'te işareti handleChange tarafından çoktan
+  // kaldırılmış olur) bu temizlemeden asla etkilenmez.
+  const clearTmdbMatch = () => {
+    setForm((prevForm) => clearAutofilledFormValues(prevForm, tmdbAutofilledFields));
+    setTmdbAutofilledFields(INITIAL_TMDB_AUTOFILLED_FIELDS);
+    setTmdbMatch(null);
+    setTmdbManualOverride(false);
+  };
+
+  // TmdbMatchPicker'daki "Manuel devam et": kullanıcı TMDb sonucu
+  // bulunamadığında/hata aldığında bilinçli olarak eşleştirmeden devam
+  // etmeyi seçer — bir daha aynı gönderim için karar alanı gösterilmez.
+  const acknowledgeTmdbManualContinue = () => {
+    setTmdbManualOverride(true);
+  };
+
+  // Submit öncesi inline karar alanındaki "TMDb'de ara": karar alanını
+  // kapatır ve TmdbMatchPicker'ın kendi arama fonksiyonunu (searchTrigger
+  // sayaç değişimiyle) tetikler — ayrı bir ikinci arama mantığı yazılmaz.
+  const handleTmdbDecisionSearch = () => {
+    setShowTmdbDecision(false);
+    setTmdbSearchTrigger((previous) => previous + 1);
+  };
+
+  // Submit öncesi inline karar alanındaki "Manuel ekle": kararı kaydeder
+  // ve gerçek kayıt işlemini (persistNewContent) hemen çalıştırır — kullanıcı
+  // üçüncü kez "İçerik ekle"ye basmak zorunda kalmaz.
+  const handleTmdbDecisionManual = () => {
+    setTmdbManualOverride(true);
+    setShowTmdbDecision(false);
+    persistNewContent();
+  };
+
   const markAllInForm = () => {
     setForm({
       ...form,
@@ -626,63 +899,6 @@ function App() {
       status: "İzlediklerim",
       completedDate: form.completedDate || getToday(),
     });
-  };
-
-  const fetchShowInfo = async () => {
-    if (showSearch.trim() === "") {
-      setShowSearchFeedback({
-        type: "error",
-        text: "Önce bir dizi adı yaz.",
-      });
-      return;
-    }
-
-    try {
-      setIsFetchingShow(true);
-      setShowSearchFeedback(null);
-
-      const response = await fetch(
-        `https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(
-          showSearch
-        )}&embed=episodes`
-      );
-
-      if (!response.ok) {
-        setShowSearchFeedback({
-          type: "error",
-          text: "Dizi bulunamadı. Farklı bir isim deneyebilirsin.",
-        });
-        return;
-      }
-
-      const data = await response.json();
-
-      const episodes = data._embedded?.episodes || [];
-      const episodeCount = episodes.length;
-      const runtime = data.averageRuntime || data.runtime || 25;
-
-      setForm({
-        ...form,
-        title: data.name || "",
-        type: "Dizi",
-        totalEpisodes: episodeCount,
-        minutesPerEpisode: runtime,
-        wordsPerEpisode: runtime * 120,
-      });
-
-      setShowSearchFeedback({
-        type: "success",
-        text: "Bilgiler çekildi, istersen süre ve bölüm sayılarını düzenleyebilirsin.",
-      });
-    } catch (error) {
-      setShowSearchFeedback({
-        type: "error",
-        text: "Bilgiler çekilirken bir sorun oluştu. Tekrar dener misin?",
-      });
-      console.log(error);
-    } finally {
-      setIsFetchingShow(false);
-    }
   };
 
   const addContent = async (event) => {
@@ -701,6 +917,28 @@ function App() {
       return;
     }
 
+    // Film/Dizi/Anime TMDb eşleştirmeyi destekliyor; bu türlerden biri
+    // seçiliyken ne bir eşleşme ne de bilinçli bir "manuel devam et" kararı
+    // varsa, doğrudan kaydetmek yerine küçük bir inline karar alanı
+    // gösterilir (bkz. ContentForm'daki showTmdbDecision bloğu). Podcast/
+    // YouTube/Animasyon gibi TMDb desteklemeyen türlerde bu adım hiç
+    // devreye girmez, doğrudan kaydedilir.
+    const candidateMediaType = getMediaTypeFromContentType(form.type);
+    const needsTmdbDecision = Boolean(candidateMediaType) && !tmdbMatch && !tmdbManualOverride;
+
+    if (needsTmdbDecision) {
+      setShowTmdbDecision(true);
+      return;
+    }
+
+    await persistNewContent();
+  };
+
+  // addContent'in guard/karar aşamasından geçtikten sonra gerçek kayıt
+  // işlemini yapar — mevcut saveContentToBackend boru hattına hiç
+  // dokunmadan aynı şekilde çağırır. handleTmdbDecisionManual da (kullanıcı
+  // submit-öncesi karar alanında "Manuel ekle" derse) bunu doğrudan çağırır.
+  const persistNewContent = async () => {
     const totalEpisodes = toSafeNumber(form.totalEpisodes);
 
     const watchedEpisodes = Math.min(
@@ -713,6 +951,14 @@ function App() {
 
     const today = getToday();
     const isCompleted = totalEpisodes > 0 && watchedEpisodes >= totalEpisodes;
+
+    // TMDb eşleşmesi varsa kimlik alanları oradan gelir (sahte tmdbId/
+    // sourceId ASLA üretilmez); yoksa yalnızca mediaType için type'tan
+    // güvenli bir fallback türetilir (Film→movie, Dizi/Anime→tv, diğerleri
+    // için boş) — bu, "Bölümleri Yönet"in mediaType="tv" gerektiren
+    // görünürlük koşulunu karşılar, ama tmdbId/sourceId olmadığı için
+    // canManageEpisodes yine false kalır (bkz. renderContentCard).
+    const matchedMediaType = tmdbMatch?.mediaType || getMediaTypeFromContentType(form.type);
 
     const newContent = {
       id: Date.now(),
@@ -746,7 +992,31 @@ function App() {
               },
             ]
           : [],
+      mediaType: matchedMediaType,
+      tmdbId: tmdbMatch?.tmdbId ?? null,
+      sourceId: tmdbMatch?.sourceId ?? null,
+      posterUrl: tmdbMatch?.posterUrl || "",
+      overview: tmdbMatch?.overview || "",
+      releaseYear: tmdbMatch?.releaseYear ?? null,
+      tmdbRating: tmdbMatch?.tmdbRating ?? null,
+      source: tmdbMatch ? "tmdb" : "manual",
     };
+
+    // Backend'e hiç gitmeden önce hızlı bir ön kontrol: aynı içerik
+    // (tmdbId+mediaType → sourceId → normalize title+type önceliğiyle)
+    // zaten kütüphanede mi? Bu, "Breaking Bad" / "breaking bad" gibi aynı
+    // içeriğin farklı yazımlarla iki kez eklenmesini de kapsar. Backend'in
+    // userId+contentId unique index'i (409) her durumda son güvenlik ağı
+    // olarak kalmaya devam eder — burada kaldırılmıyor.
+    const existingMatch = findExistingContentForCandidate(contents, newContent);
+
+    if (existingMatch) {
+      setContentAddFeedback({
+        type: "error",
+        text: "Bu içerik zaten kütüphanende var.",
+      });
+      return;
+    }
 
     setIsSavingContent(true);
     setContentAddFeedback(null);
@@ -778,22 +1048,15 @@ function App() {
 
     setIsSavingContent(false);
 
-    setForm({
-      title: "",
-      type: "Dizi",
-      status: "İzleniyor",
-      startDate: "",
-      targetEndDate: "",
-      completedDate: "",
-      totalEpisodes: "",
-      watchedEpisodes: "",
-      minutesPerEpisode: "",
-      wordsPerEpisode: "",
-      comprehension: 0,
-      difficulty: "",
-    });
-
-    setShowSearch("");
+    // Tek canonical başlangıç değeri (INITIAL_CONTENT_FORM) kullanılır —
+    // önceki içerikten kalan totalEpisodes/minutesPerEpisode/wordsPerEpisode
+    // gibi TMDb kaynaklı değerlerin bir sonraki içeriğe sızmaması için form
+    // ve TMDb eşleştirme/karar state'lerinin TAMAMI burada sıfırlanır.
+    setForm(INITIAL_CONTENT_FORM);
+    setTmdbMatch(null);
+    setTmdbAutofilledFields(INITIAL_TMDB_AUTOFILLED_FIELDS);
+    setTmdbManualOverride(false);
+    setShowTmdbDecision(false);
   };
 
   // Silme akışı: backendUserContentId'si olan kayıtlar için önce backend'den
@@ -924,11 +1187,18 @@ function App() {
       Math.round((newWatchedEpisodes / totalEpisodes) * 100)
     );
 
+    // watchLogs de payload'a dahil edilir — aksi halde bu bölüm izleme
+    // kaydı yalnızca React state'inde kalır, MongoDB'ye hiç yazılmaz ve
+    // sayfa yenilenince (veya bir sonraki oturumda) kaybolur. "Aylık Özet"
+    // ve günlük grafikler bu tarihli kayıtları kullanır (bkz. stats.js
+    // getContentDatedEntries) — watchLogs backend'e gitmeden bu ekranlar
+    // gerçek aktiviteye rağmen boş görünmeye devam eder.
     syncSummaryToBackendInBackground(content, {
       watchedEpisodes: newWatchedEpisodes,
       watchedMinutes,
       watchedPercentage,
       status: FRONTEND_STATUS_TO_API_STATUS[updatedContent.status] || "watching",
+      watchLogs: updatedContent.watchLogs,
     });
   };
 
@@ -973,12 +1243,16 @@ function App() {
       prevContents.map((item) => (item.id === id ? updatedContent : item))
     );
 
+    // watchOneEpisode'daki aynı gerekçeyle: watchLogs de gönderilmezse bu
+    // "tümünü izledim" kaydı MongoDB'ye hiç yazılmaz, Aylık Özet bu
+    // aktiviteyi asla göremez.
     syncSummaryToBackendInBackground(content, {
       watchedEpisodes: totalEpisodes,
       watchedMinutes: totalEpisodes * (content.minutesPerEpisode || 0),
       watchedPercentage: 100,
       status: "completed",
       finishDate: updatedContent.completedDate || today,
+      watchLogs: updatedContent.watchLogs,
     });
   };
 
@@ -1078,23 +1352,72 @@ function App() {
   };
 
   // Keşfet öğesine karşılık gelen kayıtlı content'i (varsa) bulur.
+  // KÖK NEDEN (Sorun 2): Bu fonksiyon önceden `content.source === "tmdb"`
+  // koşuluyla başlıyordu. `source` yalnızca frontend'de bu oturumda
+  // eklenirken set edilen, MongoDB'ye HİÇ yazılmayan (Content/UserContent
+  // şemalarında ve whitelist'lerinde yok) geçici bir bookkeeping alanıydı.
+  // Sayfa yenilenince / yeniden giriş yapılınca `getUserContents` →
+  // mapUserContentToFrontendContent ile gelen HİÇBİR content objesinde
+  // `source` alanı yoktu — bu yüzden eşleşme her zaman baştan reddediliyor,
+  // Keşfet'te zaten ekli bir içerik bile "+" (eklenmemiş) görünüyordu.
+  // Gerçek ve kalıcı olan sinyal `sourceId`dir: mapUserContentToFrontendContent
+  // bunu Content.tmdbId + Content.mediaType'tan HER reload'da güvenilir
+  // biçimde yeniden kurar (bkz. App.jsx'teki reconstructedSourceId). Bu
+  // yüzden eşleştirme artık doğrudan `sourceId` üzerinden yapılır; `source`
+  // alanına hiç bakılmaz.
   const findDiscoveryContent = (item) => {
-    return contents.find((content) => {
-      if (content.source !== "tmdb") {
-        return false;
-      }
+    if (!item) {
+      return null;
+    }
 
-      if (item.id) {
-        return content.sourceId === item.id;
-      }
+    return (
+      contents.find((content) => {
+        if (item.id && content.sourceId) {
+          return content.sourceId === item.id;
+        }
 
-      return (
-        content.title === item.title && content.mediaType === item.mediaType
-      );
-    });
+        return (
+          (content.title || "").trim().toLowerCase() ===
+            (item.title || "").trim().toLowerCase() &&
+          content.mediaType === item.mediaType
+        );
+      }) || null
+    );
   };
 
   const isDiscoveryItemAdded = (item) => Boolean(findDiscoveryContent(item));
+
+  // Keşfet kartında (PosterCard) "mevcut durum açıkça gösterilmeli"
+  // gereksinimi için: içerik zaten ekliyse Türkçe durum etiketini
+  // ("İzleyeceğim"/"İzliyorum"/"İzledim"), değilse null döner.
+  const getDiscoveryItemStatusLabel = (item) => {
+    const existing = findDiscoveryContent(item);
+
+    if (!existing) {
+      return null;
+    }
+
+    return STATUS_META[getStatus(existing)]?.label || null;
+  };
+
+  // PosterCard'ın "+"/"✓" butonuna, içerik zaten ekliyken basıldığında
+  // çağrılır (buton bu durumda ekleme yerine detay modalını açar — bkz.
+  // PosterCard.jsx). Modal açılmadan önce kullanıcıya "boşa tıklamadın,
+  // bu içerik zaten kütüphanende" diyen görünür bir mesaj gösterir.
+  const notifyDiscoveryItemAlreadyAdded = (item) => {
+    const existing = findDiscoveryContent(item);
+
+    if (!existing) {
+      return;
+    }
+
+    const statusLabel = STATUS_META[getStatus(existing)]?.label || getStatus(existing);
+
+    setContentAddFeedback({
+      type: "info",
+      text: `Bu içerik zaten kütüphanende. Mevcut durum: ${statusLabel}.`,
+    });
+  };
 
   // Bir içeriğin durumunu (İzleyecekler / İzleniyor / İzlediklerim) doğrudan
   // günceller. Bölüm/sezon verisine hiç dokunmaz — sadece status ve
@@ -1110,6 +1433,19 @@ function App() {
     const content = contents.find((item) => item.id === contentId);
 
     if (!content) {
+      return;
+    }
+
+    // Kullanıcı zaten aktif olan durumu tekrar seçerse (örn. "İzliyorum"
+    // zaten aktifken tekrar "İzliyorum"a basarsa): gereksiz bir PUT isteği
+    // atılmaz, buton geçici olarak disabled edilmez (updatingContentId hiç
+    // set edilmez) — yalnızca bunun zaten mevcut durum olduğunu belirten
+    // görünür bir bilgi mesajı gösterilir.
+    if (getStatus(content) === status) {
+      setContentAddFeedback({
+        type: "info",
+        text: "Bu içerik zaten bu durumda.",
+      });
       return;
     }
 
@@ -1178,14 +1514,28 @@ function App() {
   const addDiscoveryItemToWatchlist = async (item, status = "İzleyecekler") => {
     const existingContent = findDiscoveryContent(item);
 
-    // Bu içerik zaten backend'e kaydedilmişse (backendUserContentId varsa),
-    // tekrar API'ye gitmeye gerek yok — sadece durumunu güncelle.
+    // Bu içerik zaten backend'e kaydedilmişse (backendUserContentId varsa):
+    // istenen durum zaten aktifse (örn. Keşfet'te "+"ya tekrar basıldıysa)
+    // hiçbir ağ isteği atılmadan, Keşfet bağlamına özel açıklayıcı bir bilgi
+    // mesajı gösterilir (Sorun 2) — kullanıcı "neden hiçbir şey olmadı"
+    // diye düşünmesin. Gerçekten farklı bir durum isteniyorsa mevcut
+    // UserContent kaydı setContentStatus ile güncellenir (yeni kayıt
+    // AÇILMAZ) ve feedback tek kaynaktan (setContentStatus) gelir.
     if (existingContent && existingContent.backendUserContentId) {
-      setContentStatus(existingContent.id, status);
-      setContentAddFeedback({
-        type: "success",
-        text: "İçerik zaten kütüphanende, durumu güncellendi.",
-      });
+      const currentStatus = getStatus(existingContent);
+
+      if (currentStatus === status) {
+        const statusLabel = STATUS_META[currentStatus]?.label || currentStatus;
+
+        setContentAddFeedback({
+          type: "info",
+          text: `Bu içerik zaten kütüphanende. Mevcut durum: ${statusLabel}.`,
+        });
+
+        return;
+      }
+
+      await setContentStatus(existingContent.id, status);
       return;
     }
 
@@ -1336,8 +1686,26 @@ function App() {
   };
 
   // Bir sezonun bölümleri (getSeasonDetails) yüklenince content.seasons'ı
-  // günceller. Mevcut watched/watchedAt değerleri her zaman korunur, sadece
-  // eksik bölümler eklenir veya güncel açıklama/süre bilgisi tazelenir.
+  // günceller. Bu fonksiyon YALNIZCA modalın açılması/sezon görüntülenmesi
+  // yüzünden çalışır — gerçek bir kullanıcı aksiyonu değildir. Bu yüzden
+  // `watchedEpisodes` (kalıcı ilerleme özeti) burada ASLA yeniden hesaplanıp
+  // ÜZERİNE YAZILMAZ; yalnızca gerçek kullanıcı aksiyonları (watchOneEpisode/
+  // markAllWatched/toggleEpisodeWatched/toggleSeasonWatched) onu değiştirir.
+  //
+  // Bir sezon bu oturumda İLK KEZ yükleniyorsa (existingSeason yok, yani
+  // kalıcı ayrıntılı episode state'i yok — bkz. bilinen sınırlama: seasons
+  // MongoDB'de saklanmıyor), UI'da göstermek için canonical watchedEpisodes
+  // değeri, yayın sırasına göre bu sezonun ilk N bölümüne watched=true
+  // olarak "hydrate" edilir (N = watchedEpisodes eksi önceden zaten
+  // hydrate/işaretlenmiş diğer sezonlardaki bölüm sayısı). Bu SADECE bir
+  // UI başlangıç durumu temsilidir: watchedEpisodes'e dokunmaz, watchLogs
+  // oluşturmaz, backend'e hiçbir şey göndermez. Sezonlar sırayla (S1, S2, ...)
+  // gezilmediği durumlarda bu hydration kesin olmayabilir — bilinen ve kabul
+  // edilen bir sınırlamadır.
+  //
+  // Bir sezon DAHA ÖNCE bu oturumda yüklenmiş/senkronlanmışsa (existingSeason
+  // var), o sezonun gerçek watched/watchedAt değerleri (kullanıcının gerçek
+  // tıklamalarından gelmiş olabilir) korunur; hydration bir daha uygulanmaz.
   const syncSeasonEpisodes = (sourceId, seasonNumber, seasonName, tmdbEpisodes) => {
     setContents((prevContents) =>
       prevContents.map((content) => {
@@ -1350,19 +1718,50 @@ function App() {
           (season) => season.seasonNumber === seasonNumber
         );
 
-        const existingEpisodesByNumber = new Map(
-          (existingSeason?.episodes || []).map((episode) => [
-            episode.episodeNumber,
-            episode,
-          ])
+        const sortedTmdbEpisodes = [...tmdbEpisodes].sort(
+          (a, b) => a.episode_number - b.episode_number
         );
 
-        const mergedEpisodes = tmdbEpisodes.map((episode) => {
-          const existingEpisode = existingEpisodesByNumber.get(
-            episode.episode_number
+        let mergedEpisodes;
+
+        if (existingSeason) {
+          const existingEpisodesByNumber = new Map(
+            existingSeason.episodes.map((episode) => [
+              episode.episodeNumber,
+              episode,
+            ])
           );
 
-          return {
+          mergedEpisodes = sortedTmdbEpisodes.map((episode) => {
+            const existingEpisode = existingEpisodesByNumber.get(
+              episode.episode_number
+            );
+
+            return {
+              id: `tmdb-episode-${episode.id}`,
+              episodeNumber: episode.episode_number,
+              name: episode.name || "",
+              runtime:
+                typeof episode.runtime === "number" ? episode.runtime : null,
+              airDate: episode.air_date || "",
+              overview: episode.overview || "",
+              watched: existingEpisode?.watched || false,
+              watchedAt: existingEpisode?.watchedAt || null,
+            };
+          });
+        } else {
+          const alreadyHydratedCount = existingSeasons.reduce(
+            (sum, season) =>
+              sum + season.episodes.filter((episode) => episode.watched).length,
+            0
+          );
+
+          const remainingToHydrate = Math.max(
+            Math.floor(toSafeNumber(content.watchedEpisodes)) - alreadyHydratedCount,
+            0
+          );
+
+          mergedEpisodes = sortedTmdbEpisodes.map((episode, index) => ({
             id: `tmdb-episode-${episode.id}`,
             episodeNumber: episode.episode_number,
             name: episode.name || "",
@@ -1370,10 +1769,14 @@ function App() {
               typeof episode.runtime === "number" ? episode.runtime : null,
             airDate: episode.air_date || "",
             overview: episode.overview || "",
-            watched: existingEpisode?.watched || false,
-            watchedAt: existingEpisode?.watchedAt || null,
-          };
-        });
+            watched: index < remainingToHydrate,
+            // watchedAt kasıtlı olarak null: bu bölümün gerçekte NE ZAMAN
+            // izlendiği bilinmiyor (yalnızca özet sayı biliniyor) — sahte
+            // bir tarih üretmek stats.js'teki tarihli istatistikleri
+            // yanıltırdı.
+            watchedAt: null,
+          }));
+        }
 
         const updatedSeasons = [
           ...existingSeasons.filter(
@@ -1381,12 +1784,6 @@ function App() {
           ),
           { seasonNumber, name: seasonName, episodes: mergedEpisodes },
         ];
-
-        const watchedEpisodes = updatedSeasons.reduce(
-          (sum, season) =>
-            sum + season.episodes.filter((episode) => episode.watched).length,
-          0
-        );
 
         const averageRuntime = computeAverageRuntime(
           updatedSeasons,
@@ -1396,7 +1793,6 @@ function App() {
         return {
           ...content,
           seasons: updatedSeasons,
-          watchedEpisodes,
           minutesPerEpisode: averageRuntime,
           wordsPerEpisode: averageRuntime * 120,
         };
@@ -1939,6 +2335,13 @@ function App() {
     const isSeasonTracked =
       item.mediaType === "tv" && item.seasons && item.seasons.length > 0;
 
+    // mediaType === "tv" tek başına yeterli değil: manuel eklenip TMDb ile
+    // eşleştirilmemiş bir dizi de mediaType="tv" olabilir (bkz.
+    // getMediaTypeFromContentType fallback'i, addContent). Detaylı sezon/
+    // bölüm yönetimi yalnızca güvenilir bir TMDb TV id'si çözümlenebiliyorsa
+    // gerçekten çalışır.
+    const itemCanManageEpisodes = canManageEpisodes(item);
+
     const totalEpisodes = Math.max(item.totalEpisodes, 0);
     const watchedEpisodes = Math.min(
       Math.max(item.watchedEpisodes, 0),
@@ -2138,7 +2541,15 @@ function App() {
 
         {item.mediaType === "tv" && (
           <div className="series-progress">
-            {item.seasons && item.seasons.length > 0 ? (
+            {!itemCanManageEpisodes && (
+              <p className="series-progress-text series-progress-hint">
+                Bu dizi TMDb ile eşleştirilmediği için detaylı sezon/bölüm
+                takibi kullanılamıyor. Basit bölüm sayacını ("+1 bölüm
+                izledim" / "Tümünü izledim") kullanmaya devam edebilirsin.
+              </p>
+            )}
+
+            {itemCanManageEpisodes && item.seasons && item.seasons.length > 0 ? (
               (() => {
                 const {
                   completionPercent,
@@ -2200,17 +2611,23 @@ function App() {
                   </>
                 );
               })()
-            ) : (
+            ) : itemCanManageEpisodes ? (
               <p className="series-progress-text">
                 Bölüm bilgileri henüz yüklenmedi. Yüklemek için "Bölümleri
                 Yönet"e bas.
               </p>
-            )}
+            ) : null}
 
             <button
               type="button"
               className="manage-episodes-btn"
               onClick={() => setManagingContentId(item.id)}
+              disabled={!itemCanManageEpisodes}
+              title={
+                itemCanManageEpisodes
+                  ? undefined
+                  : "Detaylı yönetim için önce bu içeriği TMDb ile eşleştirmen gerekir"
+              }
             >
               Bölümleri Yönet
             </button>
@@ -2317,12 +2734,17 @@ function App() {
             form={form}
             handleChange={handleChange}
             addContent={addContent}
-            showSearch={showSearch}
-            setShowSearch={handleShowSearchChange}
-            fetchShowInfo={fetchShowInfo}
-            isFetchingShow={isFetchingShow}
             markAllInForm={markAllInForm}
-            showSearchFeedback={showSearchFeedback}
+            tmdbMatch={tmdbMatch}
+            onTmdbMatchSelect={applyTmdbMatch}
+            onClearTmdbMatch={clearTmdbMatch}
+            tmdbManualOverride={tmdbManualOverride}
+            onTmdbManualContinue={acknowledgeTmdbManualContinue}
+            tmdbSearchTrigger={tmdbSearchTrigger}
+            showTmdbDecision={showTmdbDecision}
+            onTmdbDecisionSearch={handleTmdbDecisionSearch}
+            onTmdbDecisionManual={handleTmdbDecisionManual}
+            isSavingContent={isSavingContent}
           />
         </div>
       </>
@@ -2456,8 +2878,11 @@ function App() {
         {activePage === "discover" && (
           <DiscoverPage
             isItemAdded={isDiscoveryItemAdded}
+            getItemStatusLabel={getDiscoveryItemStatusLabel}
+            onAlreadyAdded={notifyDiscoveryItemAlreadyAdded}
             onAddToWatchlist={addDiscoveryItemToWatchlist}
             contents={contents}
+            updatingContentId={updatingContentId}
             onSyncSeriesTotalEpisodes={syncSeriesTotalEpisodes}
             onSyncSeasonEpisodes={syncSeasonEpisodes}
             onToggleEpisodeWatched={toggleEpisodeWatched}
@@ -2529,6 +2954,7 @@ function App() {
           onAdd={(status) => setContentStatus(managedContent.id, status)}
           onClose={() => setManagingContentId(null)}
           contents={contents}
+          updatingContentId={updatingContentId}
           onSyncSeriesTotalEpisodes={syncSeriesTotalEpisodes}
           onSyncSeasonEpisodes={syncSeasonEpisodes}
           onToggleEpisodeWatched={toggleEpisodeWatched}

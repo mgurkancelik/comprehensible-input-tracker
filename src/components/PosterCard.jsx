@@ -1,4 +1,12 @@
-function PosterCard({ item, isAdded, onAdd, onOpenDetail, levelFilter }) {
+function PosterCard({
+  item,
+  isAdded,
+  statusLabel,
+  onAdd,
+  onAlreadyAdded,
+  onOpenDetail,
+  levelFilter,
+}) {
   const handleCardKeyDown = (event) => {
     if (event.target !== event.currentTarget) {
       return;
@@ -48,17 +56,33 @@ function PosterCard({ item, isAdded, onAdd, onOpenDetail, levelFilter }) {
           </span>
         )}
 
+        {isAdded && statusLabel && (
+          <span className="poster-status-badge">{statusLabel}</span>
+        )}
+
+        {/* Zaten eklenmiş bir içerikte bu buton hiçbir zaman kalıcı olarak
+            disabled edilmez — aksi halde kullanıcı durumunu neden
+            değiştiremediğini anlayamaz. Bunun yerine tıklama önce görünür
+            bir "zaten kütüphanende, mevcut durum: X" bilgisi verir, sonra
+            durumu (İzleyeceğim/İzliyorum/İzledim) seçebileceği detay
+            modalını açar; varsayılan "İzleyecekler" durumuna sessizce
+            sıfırlamaz. */}
         <button
           type="button"
           className={`poster-add-btn${isAdded ? " poster-add-btn--added" : ""}`}
           onClick={(event) => {
             event.stopPropagation();
-            onAdd();
+
+            if (isAdded) {
+              onAlreadyAdded?.();
+              onOpenDetail();
+            } else {
+              onAdd();
+            }
           }}
-          disabled={isAdded}
           aria-label={
             isAdded
-              ? `${item.title} zaten listende`
+              ? `${item.title} zaten listende (${statusLabel || "eklendi"}) — durumu değiştirmek için aç`
               : `${item.title} içeriğini listeme ekle`
           }
         >

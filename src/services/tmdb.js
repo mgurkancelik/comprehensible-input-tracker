@@ -73,6 +73,12 @@ export function getSeriesDetails(seriesId) {
   return tmdbFetch(`/tv/${seriesId}`);
 }
 
+// TmdbMatchPicker: manuel form için film eşleştirmesi seçildiğinde, arama
+// sonucu listesinde bulunmayan `runtime` bilgisini almak için kullanılır.
+export function getMovieDetails(movieId) {
+  return tmdbFetch(`/movie/${movieId}`);
+}
+
 export function getSeasonDetails(seriesId, seasonNumber) {
   return tmdbFetch(`/tv/${seriesId}/season/${seasonNumber}`);
 }

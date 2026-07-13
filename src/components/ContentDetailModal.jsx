@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { getSeriesDetails, getSeasonDetails } from "../services/tmdb";
+import { getSeriesDetails, getSeasonDetails, getMovieDetails } from "../services/tmdb";
+import { getTmdbTvId, getTmdbMovieId } from "../utils/contentIdentity";
 
 const STATUS_OPTIONS = [
   { value: "İzleyecekler", label: "İzleyeceğim" },
@@ -13,13 +14,75 @@ function ContentDetailModal({
   onAdd,
   onClose,
   contents,
+  updatingContentId,
   onSyncSeriesTotalEpisodes,
   onSyncSeasonEpisodes,
   onToggleEpisodeWatched,
   onToggleSeasonWatched,
 }) {
   const isSeries = item?.mediaType === "tv";
-  const rawSeriesId = item?.id ? item.id.split("-").pop() : null;
+  // Güvensiz `item.id.split("-").pop()` yerine: yalnızca content.tmdbId
+  // (sayısal) veya tam "tmdb-tv-<sayı>" formatındaki sourceId kabul edilir.
+  // Bu, MongoDB ObjectId'lerinin veya Date.now() id'lerinin sonundaki
+  // rakamların yanlışlıkla TMDb id'si sanılmasını engeller.
+  const rawSeriesId = getTmdbTvId({
+    mediaType: item?.mediaType,
+    sourceId: item?.id,
+    tmdbId: item?.tmdbId,
+  });
+
+  const isMovie = item?.mediaType === "movie";
+  const rawMovieId = getTmdbMovieId({
+    mediaType: item?.mediaType,
+    sourceId: item?.id,
+    tmdbId: item?.tmdbId,
+  });
+
+  // Keşfet grid'i (liste/arama endpoint'leri runtime döndürmediği için)
+  // film süresini tahmin etmiyor artık (bkz. utils/level.js) — gerçek
+  // TMDb runtime'ı yalnızca burada, içerik gerçekten açıldığında, tek bir
+  // istekle (getMovieDetails) çekilir.
+  const [movieRuntime, setMovieRuntime] = useState(null);
+  const [movieRuntimeStatus, setMovieRuntimeStatus] = useState("idle");
+
+  useEffect(() => {
+    if (!isMovie || !rawMovieId) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadMovieRuntime = async () => {
+      setMovieRuntimeStatus("loading");
+
+      try {
+        const details = await getMovieDetails(rawMovieId);
+
+        if (isCancelled) {
+          return;
+        }
+
+        setMovieRuntime(
+          typeof details.runtime === "number" && details.runtime > 0
+            ? details.runtime
+            : null
+        );
+        setMovieRuntimeStatus("success");
+      } catch {
+        if (isCancelled) {
+          return;
+        }
+
+        setMovieRuntimeStatus("error");
+      }
+    };
+
+    loadMovieRuntime();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isMovie, rawMovieId]);
 
   const [seasons, setSeasons] = useState([]);
   const [seasonsStatus, setSeasonsStatus] = useState("idle");
@@ -191,11 +254,24 @@ function ContentDetailModal({
     return null;
   }
 
-  const estimatedWords = Math.round((item.minutesPerEpisode || 0) * 120);
+  // Film için: Keşfet grid'inden gelen item.minutesPerEpisode artık hiçbir
+  // zaman tahmini bir sayı değil — ya gerçek TMDb runtime'ı (yukarıdaki
+  // fetch başarılıysa movieRuntime) ya da null'dur. Dizi için mevcut
+  // (tahmini olarak açıkça etiketlenen) minutesPerEpisode kullanılmaya
+  // devam eder.
+  const displayMinutes = isMovie ? movieRuntime : item.minutesPerEpisode;
+  const estimatedWords =
+    typeof displayMinutes === "number" ? Math.round(displayMinutes * 120) : null;
 
   const savedContent = (contents || []).find(
     (content) => content.sourceId === item.id
   );
+
+  // Durum butonları yalnızca bu içerik için GERÇEKTEN bir güncelleme
+  // isteği sürerken (App.jsx'teki updatingContentId) geçici olarak
+  // disabled edilir — kalıcı/açıklanamayan bir inaktiflik durumu yoktur.
+  const isUpdatingStatus =
+    Boolean(savedContent) && updatingContentId === savedContent.id;
 
   const savedSeasonForSelected = savedContent?.seasons?.find(
     (season) => season.seasonNumber === selectedSeasonNumber
@@ -257,13 +333,21 @@ function ContentDetailModal({
             </div>
 
             <div className="modal-stat">
-              <span>Tahmini Süre</span>
-              <strong>{item.minutesPerEpisode} dk</strong>
+              <span>{isMovie ? "Süre" : "Tahmini Süre"}</span>
+              <strong>
+                {isMovie && movieRuntimeStatus === "loading"
+                  ? "Yükleniyor..."
+                  : typeof displayMinutes === "number"
+                  ? `${displayMinutes} dk`
+                  : "—"}
+              </strong>
             </div>
 
             <div className="modal-stat">
               <span>Tahmini Kelime</span>
-              <strong>{estimatedWords.toLocaleString("tr-TR")}</strong>
+              <strong>
+                {estimatedWords !== null ? estimatedWords.toLocaleString("tr-TR") : "—"}
+              </strong>
             </div>
           </div>
 
@@ -469,6 +553,7 @@ function ContentDetailModal({
                       isActive ? " modal-status-btn--active" : ""
                     }`}
                     aria-pressed={isActive}
+                    disabled={isUpdatingStatus}
                     onClick={() => onAdd(option.value)}
                   >
                     {isActive ? `✓ ${option.label}` : option.label}

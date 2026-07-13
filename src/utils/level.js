@@ -98,18 +98,26 @@ export function getGenreLabel(genreIds = []) {
 
 const ANIMATION_GENRE_ID = 16;
 
-const DEFAULT_MOVIE_MINUTES = 110;
 const DEFAULT_SERIES_MINUTES = 45;
-const ANIMATED_MOVIE_MINUTES = 90;
 const ANIMATED_SERIES_MINUTES = 22;
 
+// Film süresi ARTIK tahmin edilmez. TMDb'nin liste/arama endpoint'leri
+// (search/movie, movie/popular, movie/top_rated) `runtime` döndürmüyor,
+// bu yüzden eskiden burada sabit bir "ortalama film süresi" (110 dk, veya
+// animasyon için 90 dk) varsayılıyordu — sonuç olarak neredeyse HER film
+// Keşfet'te aynı "110 dk" değerini gösteriyordu, ki bu gerçek bir TMDb
+// verisi değildi. Gerçek runtime yalnızca `/movie/{id}` detay endpoint'inde
+// var; bu değeri Keşfet grid'indeki her kart için tek tek çekmek yerine,
+// içerik gerçekten açıldığında (ContentDetailModal) tek bir istekle
+// getMovieDetails üzerinden alınır. Burada film için artık null dönülür —
+// çağıran taraf (DiscoverPage/PosterCard) bunu "bilinmiyor" olarak ele alır.
 export function estimateMinutesPerEpisode(type, genreIds = []) {
+  if (type === "Film") {
+    return null;
+  }
+
   const isAnimation =
     Array.isArray(genreIds) && genreIds.includes(ANIMATION_GENRE_ID);
-
-  if (type === "Film") {
-    return isAnimation ? ANIMATED_MOVIE_MINUTES : DEFAULT_MOVIE_MINUTES;
-  }
 
   return isAnimation ? ANIMATED_SERIES_MINUTES : DEFAULT_SERIES_MINUTES;
 }

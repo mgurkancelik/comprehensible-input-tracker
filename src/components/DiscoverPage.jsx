@@ -74,8 +74,11 @@ function normalizeTmdbItem(result, type) {
 
 function DiscoverPage({
   isItemAdded,
+  getItemStatusLabel,
+  onAlreadyAdded,
   onAddToWatchlist,
   contents,
+  updatingContentId,
   onSyncSeriesTotalEpisodes,
   onSyncSeasonEpisodes,
   onToggleEpisodeWatched,
@@ -376,7 +379,9 @@ function DiscoverPage({
               key={item.id}
               item={item}
               isAdded={isItemAdded(item)}
+              statusLabel={getItemStatusLabel?.(item)}
               onAdd={() => onAddToWatchlist(item)}
+              onAlreadyAdded={() => onAlreadyAdded?.(item)}
               onOpenDetail={() => setSelectedItem(item)}
               levelFilter={levelFilter}
             />
@@ -399,6 +404,7 @@ function DiscoverPage({
           onAdd={(status) => onAddToWatchlist(selectedItem, status)}
           onClose={() => setSelectedItem(null)}
           contents={contents}
+          updatingContentId={updatingContentId}
           onSyncSeriesTotalEpisodes={onSyncSeriesTotalEpisodes}
           onSyncSeasonEpisodes={onSyncSeasonEpisodes}
           onToggleEpisodeWatched={onToggleEpisodeWatched}

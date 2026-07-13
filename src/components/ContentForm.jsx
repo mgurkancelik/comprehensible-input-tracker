@@ -1,73 +1,34 @@
+import { useRef } from "react";
 import Button from "./ui/Button";
+import TmdbMatchPicker from "./TmdbMatchPicker";
 
 function ContentForm({
   form,
   handleChange,
   addContent,
-  showSearch,
-  setShowSearch,
-  fetchShowInfo,
-  isFetchingShow,
   markAllInForm,
-  showSearchFeedback,
+  tmdbMatch,
+  onTmdbMatchSelect,
+  onClearTmdbMatch,
+  tmdbManualOverride,
+  onTmdbManualContinue,
+  tmdbSearchTrigger,
+  showTmdbDecision,
+  onTmdbDecisionSearch,
+  onTmdbDecisionManual,
+  isSavingContent,
 }) {
   const isMovie = form.type === "Film";
+  const titleInputRef = useRef(null);
 
   return (
     <section className="form-section">
       <div className="page-title">
         <h2>Hızlı İçerik Ekle</h2>
         <p>
-          Dizi adını yaz, bilgileri otomatik çek, sonra input takibine ekle.
+          İçerik adını yaz, "Hızlı doldur" ile TMDb'den bilgileri getir, sonra
+          input takibine ekle.
         </p>
-      </div>
-
-      <div className="quick-fill-panel">
-        <p className="quick-fill-label">Hızlı Doldur</p>
-        <p className="form-hint">
-          Dizi adını yazıp bilgileri otomatik çekebilir, ardından formu
-          tamamlayabilirsin.
-        </p>
-
-        <div className="api-search">
-          <span className="search-icon" aria-hidden="true">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.6" />
-              <path
-                d="M11 11L14.5 14.5"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-            </svg>
-          </span>
-          <label className="visually-hidden" htmlFor="showSearch">
-            Dizi adı ile bilgi çek
-          </label>
-          <input
-            id="showSearch"
-            value={showSearch}
-            onChange={(e) => setShowSearch(e.target.value)}
-            placeholder="Dizi adı yaz: Breaking Bad"
-          />
-
-          <button
-            type="button"
-            onClick={fetchShowInfo}
-            disabled={isFetchingShow}
-          >
-            {isFetchingShow ? "Çekiliyor..." : "Bilgileri Çek"}
-          </button>
-        </div>
-
-        {showSearchFeedback && (
-          <p
-            className={`form-search-feedback form-search-feedback--${showSearchFeedback.type}`}
-          >
-            {showSearchFeedback.type === "success" ? "✓" : "⚠️"}{" "}
-            {showSearchFeedback.text}
-          </p>
-        )}
       </div>
 
       <form onSubmit={addContent} className="content-form">
@@ -80,6 +41,7 @@ function ContentForm({
               <input
                 id="title"
                 name="title"
+                ref={titleInputRef}
                 value={form.title}
                 onChange={handleChange}
                 placeholder="İçerik adı"
@@ -108,6 +70,18 @@ function ContentForm({
             </label>
           </div>
         </fieldset>
+
+        <TmdbMatchPicker
+          type={form.type}
+          title={form.title}
+          selectedMatch={tmdbMatch}
+          onSelect={onTmdbMatchSelect}
+          onClear={onClearTmdbMatch}
+          manualOverride={tmdbManualOverride}
+          onManualContinue={onTmdbManualContinue}
+          searchTrigger={tmdbSearchTrigger}
+          onRequestTitleFocus={() => titleInputRef.current?.focus()}
+        />
 
         <details className="advanced-fields" open>
           <summary className="advanced-fields-summary">
@@ -229,9 +203,30 @@ function ContentForm({
           </fieldset>
         </details>
 
+        {showTmdbDecision && (
+          <div className="tmdb-decision-panel" role="alert">
+            <p className="tmdb-decision-text">
+              Bu içeriği TMDb ile eşleştirmeden ekliyorsun. Eşleştirmeden
+              eklersen detaylı sezon ve bölüm yönetimi kullanılamaz.
+            </p>
+
+            <div className="tmdb-decision-actions">
+              <Button type="button" variant="primary" onClick={onTmdbDecisionSearch}>
+                TMDb&apos;de ara
+              </Button>
+
+              <Button type="button" variant="secondary" onClick={onTmdbDecisionManual}>
+                Manuel ekle
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="form-submit-row">
           <Button
             type="submit"
+            loading={isSavingContent}
+            loadingLabel="Kaydediliyor..."
             icon={
               <svg
                 width="16"
