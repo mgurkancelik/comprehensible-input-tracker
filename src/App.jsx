@@ -9,7 +9,6 @@ import InputGoalCard from "./components/InputGoalCard";
 import AuthScreen from "./components/AuthScreen";
 import LoginRequiredState from "./components/LoginRequiredState";
 import Modal from "./components/ui/Modal";
-import Chip from "./components/ui/Chip";
 import LoadingState from "./components/ui/LoadingState";
 import ErrorState from "./components/ui/ErrorState";
 import Snackbar from "./components/ui/Snackbar";
@@ -29,11 +28,12 @@ import {
   updateUserContent,
   deleteUserContent,
 } from "./services/userContents";
-import { getContents, createContent } from "./services/contents";
+import { getContents, createContent, syncContentRuntime } from "./services/contents";
 import { registerUser, loginUser, getCurrentUser } from "./services/auth";
+import { getMovieDetails } from "./services/tmdb";
 import {
   getMediaTypeFromContentType,
-  canManageEpisodes,
+  normalizeRuntimeMinutes,
 } from "./utils/contentIdentity";
 import "./App.css";
 
@@ -81,6 +81,16 @@ function extractTmdbNumericId(rawId) {
 
   const match = String(rawId).match(/(\d+)$/);
   return match ? Number(match[1]) : null;
+}
+
+// <input type="date"> zaten yalnızca "YYYY-MM-DD" veya boş string üretir,
+// ama Detayları Düzenle formundan backend'e giden değer burada bir kez daha
+// doğrulanır — geçersiz bir tarih ASLA PUT isteğine dahil edilmez. Timezone
+// kaymasına yol açacak bir Date dönüşümü YOKTUR; yalnızca format kontrolü.
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDateOnlyOrEmpty(value) {
+  return value === "" || DATE_ONLY_PATTERN.test(value);
 }
 
 // Bir değeri "geçerli, pozitif bölüm sayısı" olarak kabul edilebiliyorsa
@@ -253,6 +263,39 @@ async function findOrCreateBackendContentFromLocal(localContent, token) {
   });
 
   if (matchedContent) {
+    // Mevcut katalog kaydında film süresi eksikse (0/null — ör. daha önce
+    // manuel ya da eski/tahmini akışla eklenmiş) ve elimizde şimdi gerçek
+    // bir TMDb runtime'ı varsa (localContent.minutesPerEpisode,
+    // addDiscoveryItemToWatchlist'te getMovieDetails ile çekilmiş olabilir):
+    // dar kapsamlı sync akışıyla tamamlanır. Kayıtlı geçerli bir süre ASLA
+    // ezilmez (backend de bunu ayrıca garanti eder) — bu yalnızca eksik
+    // veriyi doldurur.
+    const hasPersistedRuntime = Number(matchedContent.episodeDuration) > 0;
+    const resolvedMinutes = normalizeRuntimeMinutes(localContent.minutesPerEpisode);
+
+    if (
+      !hasPersistedRuntime &&
+      mediaType === "movie" &&
+      tmdbId != null &&
+      matchedContent.tmdbId === tmdbId &&
+      resolvedMinutes
+    ) {
+      try {
+        const synced = await syncContentRuntime(
+          matchedContent._id,
+          { tmdbId, mediaType, minutesPerEpisode: resolvedMinutes },
+          token
+        );
+
+        if (synced?.data) {
+          return synced.data;
+        }
+      } catch {
+        // Sync başarısız olursa mevcut (süresiz) kayıt olduğu gibi
+        // kullanılmaya devam eder — ekleme akışı bundan etkilenmez.
+      }
+    }
+
     return matchedContent;
   }
 
@@ -436,12 +479,6 @@ async function saveUserContentUpdate(content, apiPayload, token) {
     return { status: "error", message: error.message };
   }
 }
-
-const STATUS_OPTIONS = [
-  { value: "İzleyecekler", label: "İzleyeceğim" },
-  { value: "İzleniyor", label: "İzliyorum" },
-  { value: "İzlediklerim", label: "İzledim" },
-];
 
 // Snackbar türüne göre otomatik kapanma süresi (ms) — hatalar biraz daha
 // uzun kalır (kullanıcı okuyup aksiyon alacak zamanı olsun), üzerine gelince/
@@ -1445,6 +1482,14 @@ function App() {
     const today = getToday();
     const isCompleted = status === "İzlediklerim";
     const isWatching = status === "İzleniyor";
+    // TMDb film için konuşulan kelime sayısı sağlamaz (bkz. stats.js
+    // resolveMovieWatchEvent) — "dakika × 120" formülü yalnızca dizi/anime
+    // için var olan (ve UI'de "Tahmini Kelime" olarak açıkça etiketlenen)
+    // mevcut tahmin davranışıdır. Bu fonksiyon artık film için gerçek TMDb
+    // runtime'ını taşıdığından (bkz. addDiscoveryItemToWatchlist), bu satır
+    // filmler için de aynı formülü tetikleyip sahte bir kelime sayısını
+    // Content.wordsPerEpisode'a kalıcı yazardı — film için 0'da bırakılır.
+    const safeWords = type === "Film" ? 0 : safeMinutes * 120;
 
     return {
       id: Date.now(),
@@ -1457,7 +1502,7 @@ function App() {
       totalEpisodes: 0,
       watchedEpisodes: 0,
       minutesPerEpisode: safeMinutes,
-      wordsPerEpisode: safeMinutes * 120,
+      wordsPerEpisode: safeWords,
       comprehension: 0,
       difficulty: "",
       watchLogs: [],
@@ -1685,6 +1730,35 @@ function App() {
       return;
     }
 
+    // Keşfet liste/arama sonuçları (TMDb'nin search/movie, movie/popular,
+    // movie/top_rated endpoint'leri) `runtime` döndürmez — bu yüzden
+    // normalizeTmdbItem film için minutesPerEpisode'u hep null bırakır
+    // (bkz. utils/level.js). Bu KÖK NEDENDİ: kayıt öncesi gerçek runtime
+    // hiç çekilmediği için Content.episodeDuration 0 olarak kaydediliyor,
+    // Takip Çizelgesi'nde "Süre bilgisi bulunamadı" görünüyor ve toplam
+    // input hiç artmıyordu. Burada, yalnızca gerçekten YENİ bir kayıt için
+    // (existingContent varsa onun kendi değeri korunur, hiç ezilmez), tek
+    // seferlik bir getMovieDetails isteğiyle gerçek TMDb runtime'ı çekilip
+    // kayıttan ÖNCE payload'a dahil edilir. Sabit/tahmini bir süre asla
+    // üretilmez: başarısız/negatif/0 sonuç sessizce null kalır.
+    let resolvedMinutesPerEpisode = normalizeRuntimeMinutes(item.minutesPerEpisode);
+    let movieRuntimeFetchFailed = false;
+
+    if (!existingContent && item.mediaType === "movie" && !resolvedMinutesPerEpisode) {
+      const movieTmdbId = extractTmdbNumericId(item.id);
+
+      if (movieTmdbId) {
+        try {
+          const details = await getMovieDetails(movieTmdbId);
+          resolvedMinutesPerEpisode = normalizeRuntimeMinutes(details?.runtime);
+        } catch {
+          resolvedMinutesPerEpisode = null;
+        }
+      }
+
+      movieRuntimeFetchFailed = !resolvedMinutesPerEpisode;
+    }
+
     // existingContent burada backend'e hiç yazılmamış eski bir localStorage
     // kaydı olabilir (backendUserContentId yok) — bu durumda onu olduğu gibi
     // backend'e kaydetmeyi dener, yoksa yeni bir local content inşa eder.
@@ -1693,7 +1767,7 @@ function App() {
       buildWatchlistContent({
         title: item.title,
         type: item.type,
-        minutesPerEpisode: item.minutesPerEpisode,
+        minutesPerEpisode: resolvedMinutesPerEpisode,
         source: "tmdb",
         sourceId: item.id,
         mediaType: item.mediaType,
@@ -1735,10 +1809,17 @@ function App() {
         setContents((prevContents) => [...prevContents, mergedContent]);
       }
 
-      showFeedback({
-        type: "success",
-        text: "İçerik kütüphanene eklendi.",
-      });
+      showFeedback(
+        movieRuntimeFetchFailed
+          ? {
+              type: "error",
+              text: "Film eklendi ancak süre bilgisi alınamadı.",
+            }
+          : {
+              type: "success",
+              text: "İçerik kütüphanene eklendi.",
+            }
+      );
     } else if (result.status === "duplicate") {
       showFeedback({
         type: "error",
@@ -1760,6 +1841,64 @@ function App() {
     }
 
     setIsSavingContent(false);
+  };
+
+  // ContentDetailModal, zaten kütüphanede olan bir filmi açtığında gerçek
+  // TMDb runtime'ını (getMovieDetails) yalnızca kendi local state'inde
+  // gösterir — bu, MongoDB'deki Content kaydına HİÇ yazılmaz (kök neden:
+  // "eski süresiz film" senaryosu). Bu fonksiyon, modal gerçek bir runtime
+  // bulduğunda ve kayıtlı içerikte süre hâlâ eksikse (0/null), dar kapsamlı
+  // sync-runtime akışıyla bunu kalıcı hale getirir. Kayıtlı geçerli bir süre
+  // varsa (yerelde bildiğimiz kadarıyla) hiç istek atmadan çıkar — hem
+  // gereksiz ağ isteğini hem de gereksiz Snackbar'ı önler.
+  const syncMovieRuntime = async (backendContentId, tmdbId, minutesPerEpisode) => {
+    const normalizedMinutes = normalizeRuntimeMinutes(minutesPerEpisode);
+
+    if (!normalizedMinutes || !backendContentId || !authToken) {
+      return;
+    }
+
+    const alreadyHasRuntime = contents.some(
+      (content) =>
+        content.backendContentId === backendContentId &&
+        Number(content.minutesPerEpisode) > 0
+    );
+
+    if (alreadyHasRuntime) {
+      return;
+    }
+
+    try {
+      const response = await syncContentRuntime(
+        backendContentId,
+        { tmdbId, mediaType: "movie", minutesPerEpisode: normalizedMinutes },
+        authToken
+      );
+
+      const updatedDuration = Number(response?.data?.episodeDuration);
+
+      if (!Number.isFinite(updatedDuration) || updatedDuration <= 0) {
+        return;
+      }
+
+      setContents((prevContents) =>
+        prevContents.map((content) =>
+          content.backendContentId === backendContentId
+            ? { ...content, minutesPerEpisode: updatedDuration }
+            : content
+        )
+      );
+
+      showFeedback({
+        type: "success",
+        text: "Film süresi TMDb verisiyle güncellendi.",
+      });
+    } catch {
+      showFeedback({
+        type: "error",
+        text: "Film süresi kaydedilemedi. Tekrar dene.",
+      });
+    }
   };
 
   const computeAverageRuntime = (seasonsList, fallback) => {
@@ -2201,59 +2340,81 @@ function App() {
     setUpdatingContentId(null);
   };
 
-  const MAX_VISIBLE_SEASON_CHIPS = 5;
-
-  const getSeriesProgressSummary = (item) => {
-    const seasonsList = item.seasons || [];
-
-    const orderedSeasons = [
-      ...seasonsList.filter((season) => season.seasonNumber !== 0),
-      ...seasonsList.filter((season) => season.seasonNumber === 0),
-    ];
-
-    const completionPercent =
-      item.totalEpisodes > 0
-        ? Math.min(
-            100,
-            Math.round((item.watchedEpisodes / item.totalEpisodes) * 100)
-          )
-        : 0;
-
-    const isFullyWatched =
-      item.totalEpisodes > 0 && item.watchedEpisodes >= item.totalEpisodes;
-
-    let nextEpisodeLabel =
-      "Sıradaki bölümü görmek için sezonları görüntüle.";
-
-    if (isFullyWatched) {
-      nextEpisodeLabel = "Tüm bölümler tamamlandı";
-    } else {
-      for (const season of orderedSeasons) {
-        const nextEpisode = [...season.episodes]
-          .sort((a, b) => a.episodeNumber - b.episodeNumber)
-          .find((episode) => !episode.watched);
-
-        if (nextEpisode) {
-          nextEpisodeLabel = `Sıradaki: S${season.seasonNumber}E${
-            nextEpisode.episodeNumber
-          } - ${nextEpisode.name || "Başlıksız Bölüm"}`;
-          break;
-        }
-      }
+  // ContentDetailModal'daki "Detayları Düzenle" tarih formunun kaydetme
+  // akışı — updateContentNotes ile birebir aynı deseni izler: tek kaydetmede
+  // startDate + finishDate birlikte gönderilir, mevcut updatingContentId
+  // kilidi hem çift-submit koruması hem de "Kaydediliyor..." durumu için
+  // yeniden kullanılır (yeni bir state icat edilmez). completedDate,
+  // finishDate ile birlikte güncellenir (mapUserContentToFrontendContent'in
+  // yaptığı eşlemeyle aynı) — film aylık takibi (stats.js) bu alanı
+  // doğrudan okuduğu için başka bir işlem gerekmez (yeni watchLogs YOK).
+  const updateContentDates = async (contentId, { startDate, finishDate }) => {
+    if (updatingContentId === contentId) {
+      return { status: "error" };
     }
 
-    const visibleSeasons = orderedSeasons.slice(0, MAX_VISIBLE_SEASON_CHIPS);
-    const hiddenSeasonCount = Math.max(
-      orderedSeasons.length - MAX_VISIBLE_SEASON_CHIPS,
-      0
+    if (!isValidDateOnlyOrEmpty(startDate) || !isValidDateOnlyOrEmpty(finishDate)) {
+      showFeedback({
+        type: "error",
+        text: "Tarihler kaydedilemedi. Tekrar dene.",
+      });
+      return { status: "error" };
+    }
+
+    const content = contents.find((item) => item.id === contentId);
+
+    if (!content) {
+      return { status: "error" };
+    }
+
+    const nextDatesContent = {
+      ...content,
+      startDate,
+      finishDate,
+      completedDate: finishDate,
+    };
+
+    setUpdatingContentId(contentId);
+    showFeedback(null);
+
+    const datesResult = await saveUserContentUpdate(
+      content,
+      { startDate, finishDate },
+      authToken
     );
 
-    return {
-      completionPercent,
-      nextEpisodeLabel,
-      visibleSeasons,
-      hiddenSeasonCount,
-    };
+    if (datesResult.status === "success" || datesResult.status === "local") {
+      setContents((prevContents) =>
+        prevContents.map((item) =>
+          item.id === contentId ? nextDatesContent : item
+        )
+      );
+
+      showFeedback(
+        datesResult.status === "success"
+          ? { type: "success", text: "İçerik tarihleri güncellendi." }
+          : { type: "success", text: "Yerel kayıt güncellendi." }
+      );
+    } else if (datesResult.status === "not_found") {
+      setContents((prevContents) =>
+        prevContents.map((item) =>
+          item.id === contentId ? nextDatesContent : item
+        )
+      );
+
+      showFeedback({
+        type: "error",
+        text: "Backend'de kayıt bulunamadı, yerel olarak güncellendi.",
+      });
+    } else {
+      showFeedback({
+        type: "error",
+        text: "Tarihler kaydedilemedi. Tekrar dene.",
+      });
+    }
+
+    setUpdatingContentId(null);
+    return datesResult;
   };
 
   const totalWatchedMinutes = getTotalInputMinutes(contents);
@@ -2507,359 +2668,6 @@ function App() {
     );
   };
 
-  const renderContentCard = (item) => {
-    const isMovie = item.type === "Film";
-
-    const isSeasonTracked =
-      item.mediaType === "tv" && item.seasons && item.seasons.length > 0;
-
-    // mediaType === "tv" tek başına yeterli değil: manuel eklenip TMDb ile
-    // eşleştirilmemiş bir dizi de mediaType="tv" olabilir (bkz.
-    // getMediaTypeFromContentType fallback'i, addContent). Detaylı sezon/
-    // bölüm yönetimi yalnızca güvenilir bir TMDb TV id'si çözümlenebiliyorsa
-    // gerçekten çalışır.
-    const itemCanManageEpisodes = canManageEpisodes(item);
-
-    const totalEpisodes = Math.max(item.totalEpisodes, 0);
-    const watchedEpisodes = Math.min(
-      Math.max(item.watchedEpisodes, 0),
-      totalEpisodes
-    );
-
-    const remainingEpisodes = Math.max(totalEpisodes - watchedEpisodes, 0);
-    const remainingMinutes = remainingEpisodes * item.minutesPerEpisode;
-    const remainingHours = (remainingMinutes / 60).toFixed(1);
-
-    const watchedMinutes = watchedEpisodes * item.minutesPerEpisode;
-    const watchedHours = (watchedMinutes / 60).toFixed(1);
-
-    const estimatedWords = watchedEpisodes * item.wordsPerEpisode;
-
-    const progress =
-      totalEpisodes === 0
-        ? 0
-        : Math.min(100, Math.round((watchedEpisodes / totalEpisodes) * 100));
-
-    const today = new Date();
-
-    const targetDate = item.targetEndDate ? new Date(item.targetEndDate) : null;
-
-    const daysLeft = targetDate
-      ? Math.ceil((targetDate - today) / (1000 * 60 * 60 * 24))
-      : null;
-
-    const dailyRequiredMinutes =
-      daysLeft && daysLeft > 0
-        ? Math.ceil(remainingMinutes / daysLeft)
-        : remainingMinutes;
-
-    const dailyRequiredHours = (dailyRequiredMinutes / 60).toFixed(1);
-
-    const isFinished = watchedEpisodes >= totalEpisodes && totalEpisodes > 0;
-    const totalEpisodesUnknown = totalEpisodes <= 0;
-
-    return (
-      <div className="content-card" key={item.id}>
-        <div className="card-top">
-          <div className="card-top-main">
-            {item.posterUrl && (
-              <img
-                src={item.posterUrl}
-                alt={`${item.title} posteri`}
-                className="card-thumbnail"
-              />
-            )}
-
-            <div>
-              <h3>{item.title}</h3>
-              <p>
-                {item.type}
-                {item.releaseYear ? ` · ${item.releaseYear}` : ""}
-              </p>
-
-              <div className="card-badges">
-                <span
-                  className={`card-badge ${
-                    (STATUS_META[getStatus(item)] || STATUS_META["İzleyecekler"])
-                      .badgeClassName
-                  }`}
-                >
-                  {(STATUS_META[getStatus(item)] || STATUS_META["İzleyecekler"])
-                    .label}
-                </span>
-
-                {item.tmdbRating ? (
-                  <span className="card-badge">
-                    ⭐ {item.tmdbRating.toFixed(1)}
-                  </span>
-                ) : null}
-
-                {item.estimatedLevel ? (
-                  <span className="card-badge card-badge--level">
-                    {item.estimatedLevel}
-                  </span>
-                ) : null}
-              </div>
-
-              {item.overview && (
-                <p className="card-overview">{item.overview}</p>
-              )}
-
-              <div className="card-status-picker">
-                {STATUS_OPTIONS.map((option) => {
-                  const isActive = getStatus(item) === option.value;
-
-                  return (
-                    <Chip
-                      key={option.value}
-                      variant="status"
-                      selected={isActive}
-                      onClick={() => setContentStatus(item.id, option.value)}
-                      disabled={updatingContentId === item.id}
-                    >
-                      {option.label}
-                    </Chip>
-                  );
-                })}
-              </div>
-
-              <div className="card-notes">
-                {item.notes ? (
-                  <>
-                    <p className="card-notes-preview">
-                      <span className="card-badge card-badge--notes">
-                        Not var
-                      </span>{" "}
-                      {item.notes}
-                    </p>
-
-                    <button
-                      type="button"
-                      className="card-notes-btn"
-                      onClick={() => setNotesModalContentId(item.id)}
-                    >
-                      Notu Düzenle
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    className="card-notes-btn"
-                    onClick={() => setNotesModalContentId(item.id)}
-                  >
-                    Not Ekle
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <button
-            className="delete-btn"
-            onClick={() => deleteContent(item.id, item.title)}
-            disabled={deletingContentId === item.id}
-          >
-            {deletingContentId === item.id ? "Siliniyor..." : "Sil"}
-          </button>
-        </div>
-
-        {!isMovie && (
-          <div className="circle-progress-row">
-            <div
-              className="circle-progress"
-              style={{
-                background: `conic-gradient(var(--color-progress) ${progress}%, var(--color-surface-alt) 0)`,
-              }}
-            >
-              <div>{progress}%</div>
-            </div>
-
-            <div>
-              <strong>
-                {watchedEpisodes}/{totalEpisodes} Bölüm
-              </strong>
-              <p>{remainingEpisodes} bölüm kaldı</p>
-            </div>
-          </div>
-        )}
-
-        <div className="details-grid">
-          <div>
-            <span>İzlenen input</span>
-            <strong>{watchedHours} saat</strong>
-          </div>
-
-          <div>
-            <span>Kalan süre</span>
-            <strong>{remainingHours} saat</strong>
-          </div>
-
-          <div>
-            <span>Kelime</span>
-            <strong>{estimatedWords.toLocaleString("tr-TR")}</strong>
-          </div>
-
-          <div>
-            <span>Günlük gereken</span>
-            <strong>
-              {item.targetEndDate ? `${dailyRequiredHours} saat` : "Yok"}
-            </strong>
-          </div>
-        </div>
-
-        <div className="date-info">
-          <p>Başlama: {item.startDate || "Belirtilmedi"}</p>
-          <p>Hedef bitiş: {item.targetEndDate || "Belirtilmedi"}</p>
-          <p>Gerçek bitiş: {item.completedDate || "Henüz bitmedi"}</p>
-          <p>
-            Hedefe kalan gün:{" "}
-            {daysLeft === null ? "Belirtilmedi" : Math.max(daysLeft, 0)}
-          </p>
-        </div>
-
-        {isMovie && getStatus(item) === "İzlediklerim" && !item.completedDate && (
-          <p className="series-progress-hint">
-            Bu filmin izlenme tarihi olmadığı için aylık takibe eklenemedi.
-          </p>
-        )}
-
-        {item.mediaType === "tv" && (
-          <div className="series-progress">
-            {!itemCanManageEpisodes && (
-              <p className="series-progress-text series-progress-hint">
-                Bu dizi TMDb ile eşleştirilmediği için detaylı sezon/bölüm
-                takibi kullanılamıyor. Basit bölüm sayacını ("+1 bölüm
-                izledim" / "Tümünü izledim") kullanmaya devam edebilirsin.
-              </p>
-            )}
-
-            {itemCanManageEpisodes && item.seasons && item.seasons.length > 0 ? (
-              (() => {
-                const {
-                  completionPercent,
-                  nextEpisodeLabel,
-                  visibleSeasons,
-                  hiddenSeasonCount,
-                } = getSeriesProgressSummary(item);
-
-                return (
-                  <>
-                    <p className="series-progress-text">
-                      Toplam ilerleme: {item.watchedEpisodes}/
-                      {item.totalEpisodes} bölüm
-                    </p>
-
-                    <div className="progress-bar">
-                      <div
-                        className="progress-bar-fill"
-                        style={{ width: `${completionPercent}%` }}
-                      />
-                    </div>
-
-                    <p className="series-progress-text">
-                      Tamamlanma: %{completionPercent}
-                    </p>
-
-                    <p className="series-progress-text series-progress-next">
-                      {nextEpisodeLabel}
-                    </p>
-
-                    <div className="season-chip-summary">
-                      {visibleSeasons.map((season) => {
-                        const watchedCount = season.episodes.filter(
-                          (episode) => episode.watched
-                        ).length;
-                        // episodeCount tercih edilir: reload sonrası backend'den
-                        // yalnızca İZLENMİŞ bölümler geldiği için (seyrek liste),
-                        // season.episodes.length modal hiç açılmadan önce yanlış
-                        // (izlenen sayısına eşit) bir toplam gösterirdi.
-                        const totalCount =
-                          season.episodeCount > 0
-                            ? season.episodeCount
-                            : season.episodes.length;
-                        const isFull =
-                          totalCount > 0 && watchedCount >= totalCount;
-
-                        return (
-                          <span
-                            className="season-mini-chip"
-                            key={season.seasonNumber}
-                          >
-                            {season.seasonNumber === 0
-                              ? "Özel"
-                              : `S${season.seasonNumber}`}{" "}
-                            {isFull ? "✓" : `${watchedCount}/${totalCount}`}
-                          </span>
-                        );
-                      })}
-
-                      {hiddenSeasonCount > 0 && (
-                        <span className="season-mini-chip season-mini-chip--muted">
-                          +{hiddenSeasonCount} sezon
-                        </span>
-                      )}
-                    </div>
-                  </>
-                );
-              })()
-            ) : itemCanManageEpisodes ? (
-              <p className="series-progress-text">
-                Bölüm bilgileri henüz yüklenmedi. Yüklemek için "Bölümleri
-                Yönet"e bas.
-              </p>
-            ) : null}
-
-            <button
-              type="button"
-              className="manage-episodes-btn"
-              onClick={() => setManagingContentId(item.id)}
-              disabled={!itemCanManageEpisodes}
-              title={
-                itemCanManageEpisodes
-                  ? undefined
-                  : "Detaylı yönetim için önce bu içeriği TMDb ile eşleştirmen gerekir"
-              }
-            >
-              Bölümleri Yönet
-            </button>
-          </div>
-        )}
-
-        {!isMovie && (
-          <div className="card-actions">
-            <button
-              className="watch-btn"
-              onClick={() => watchOneEpisode(item.id)}
-              disabled={isFinished || totalEpisodesUnknown}
-              title={
-                totalEpisodesUnknown
-                  ? "Önce bölüm bilgilerini yükle"
-                  : undefined
-              }
-            >
-              +1 bölüm izledim
-            </button>
-
-            {!isSeasonTracked && (
-              <button
-                className="complete-btn"
-                onClick={() => markAllWatched(item.id)}
-                disabled={isFinished || totalEpisodesUnknown}
-                title={
-                  totalEpisodesUnknown
-                    ? "Önce bölüm bilgilerini yükle"
-                    : undefined
-                }
-              >
-                Tümünü izledim
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const renderDashboardPage = () => {
     if (!authUser) {
       return (
@@ -3079,6 +2887,7 @@ function App() {
             onSyncSeasonEpisodes={syncSeasonEpisodes}
             onToggleEpisodeWatched={toggleEpisodeWatched}
             onToggleSeasonWatched={toggleSeasonWatched}
+            onSyncMovieRuntime={syncMovieRuntime}
           />
         )}
 
@@ -3092,7 +2901,8 @@ function App() {
               watchLaterList={watchLaterList}
               watchingList={watchingList}
               completedList={completedList}
-              renderContentCard={renderContentCard}
+              onOpenContentDetail={(item) => setManagingContentId(item.id)}
+              onNavigateToDiscover={() => setActivePage("discover")}
             />
           ) : (
             <LoginRequiredState
@@ -3139,6 +2949,14 @@ function App() {
           onSyncSeasonEpisodes={syncSeasonEpisodes}
           onToggleEpisodeWatched={toggleEpisodeWatched}
           onToggleSeasonWatched={toggleSeasonWatched}
+          onEditNotes={() => {
+            setManagingContentId(null);
+            setNotesModalContentId(managedContent.id);
+          }}
+          onDeleteContent={() => deleteContent(managedContent.id, managedContent.title)}
+          onSaveDates={updateContentDates}
+          onWatchOneEpisode={watchOneEpisode}
+          onMarkAllWatched={markAllWatched}
         />
       )}
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import EmptyState from "./ui/EmptyState";
+import LibraryPosterGrid from "./LibraryPosterGrid";
 
 const STATUS_TABS = [
   { value: "İzleyecekler", label: "İzleyeceğim" },
@@ -7,11 +8,23 @@ const STATUS_TABS = [
   { value: "İzlediklerim", label: "İzledim" },
 ];
 
-const EMPTY_MESSAGES = {
-  İzleyecekler:
-    "Henüz izleyeceğin içerik yok. Keşfet sayfasından içerik ekleyebilirsin.",
-  İzleniyor: "Şu an izlediğin bir dizi/film yok.",
-  İzlediklerim: "Tamamladığın içerikler burada görünecek.",
+// Üç sekmenin de artık kendi empty-state başlığı/açıklaması var — "İçerikleri
+// Keşfet" aksiyonu (mevcut) her üçünde de uygun, çünkü hepsi "henüz içerik
+// yok, Keşfet'ten ekle" durumunu anlatıyor.
+const EMPTY_STATE_CONTENT = {
+  İzleyecekler: {
+    title: "İzleme listende henüz içerik yok.",
+    description:
+      "Daha sonra izlemek istediğin film, dizi veya animeleri eklediğinde burada görünecek.",
+  },
+  İzleniyor: {
+    title: "Şu anda izlediğin bir içerik yok.",
+    description: "İzlemeye başladığın içerikler burada görünecek.",
+  },
+  İzlediklerim: {
+    title: "Henüz izlediğin bir içerik yok.",
+    description: "İzlediğin film, dizi veya animeleri eklediğinde burada görünecek.",
+  },
 };
 
 function LibraryPage({
@@ -22,7 +35,8 @@ function LibraryPage({
   watchLaterList,
   watchingList,
   completedList,
-  renderContentCard,
+  onOpenContentDetail,
+  onNavigateToDiscover,
 }) {
   const [activeTab, setActiveTab] = useState("İzleyecekler");
 
@@ -33,6 +47,7 @@ function LibraryPage({
   };
 
   const activeList = listByStatus[activeTab];
+  const emptyContent = EMPTY_STATE_CONTENT[activeTab];
 
   return (
     <section className="content-list">
@@ -87,10 +102,32 @@ function LibraryPage({
         ))}
       </div>
 
+      <h3 className="watched-section-title">
+        {STATUS_TABS.find((tab) => tab.value === activeTab)?.label} ({activeList.length})
+      </h3>
+
       {activeList.length === 0 ? (
-        <EmptyState description={EMPTY_MESSAGES[activeTab]} />
+        <EmptyState
+          title={emptyContent.title}
+          description={emptyContent.description}
+          action={
+            onNavigateToDiscover ? (
+              <button
+                type="button"
+                className="card-notes-btn"
+                onClick={onNavigateToDiscover}
+              >
+                İçerikleri Keşfet
+              </button>
+            ) : null
+          }
+        />
       ) : (
-        activeList.map(renderContentCard)
+        <LibraryPosterGrid
+          items={activeList}
+          status={activeTab}
+          onOpenDetail={onOpenContentDetail}
+        />
       )}
     </section>
   );

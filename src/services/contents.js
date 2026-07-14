@@ -40,3 +40,13 @@ export function createContent(payload, token) {
     headers: authHeaders(token),
   });
 }
+
+// Global Content PUT'un yerine geçmez (o kapalı kalır) — yalnızca eksik film
+// süresini doğrulanmış tmdbId eşleşmesiyle tamamlayan dar kapsamlı akış.
+export function syncContentRuntime(id, payload, token) {
+  return apiFetch(`/contents/${id}/sync-runtime`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+    headers: authHeaders(token),
+  });
+}

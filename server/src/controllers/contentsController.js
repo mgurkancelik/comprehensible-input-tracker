@@ -84,10 +84,89 @@ function bulkImportContents(req, res) {
   res.status(403).json({ ok: false, message: "Bu işlem için yetkiniz yok." });
 }
 
+// Gerçekçi bir film/uzun metraj süresi üst sınırı (20 saat) — kötüye
+// kullanım amaçlı anlamsız büyük değerleri reddetmek için, totalEpisodes'taki
+// açıklanabilir sınır mantığıyla aynı yaklaşım (bkz. UserContent.js).
+const MAX_MOVIE_RUNTIME_MINUTES = 1200;
+
+function normalizeIncomingRuntimeMinutes(rawValue) {
+  const numberValue = Number(rawValue);
+
+  if (
+    !Number.isFinite(numberValue) ||
+    numberValue <= 0 ||
+    numberValue > MAX_MOVIE_RUNTIME_MINUTES
+  ) {
+    return null;
+  }
+
+  return Math.round(numberValue);
+}
+
+// updateContent (global PUT) kasıtlı olarak kapalı kalır — bu onun yerine
+// GEÇMEZ. Bu, yalnızca EKSİK (boş/0) bir film süresini, doğrulanmış
+// tmdbId + mediaType eşleşmesiyle tamamlayan, dar kapsamlı ve whitelist'li
+// bir akıştır:
+// - Yalnızca mediaType "movie" için çalışır.
+// - Gönderilen tmdbId, kaydın kendi tmdbId'siyle birebir eşleşmezse reddedilir
+//   (yanlış içeriğe yazma ihtimalini ortadan kaldırır).
+// - Kayıtta zaten geçerli (>0) bir episodeDuration varsa HİÇBİR ŞEY
+//   değiştirmez (sessizce mevcut değeri döner) — kullanıcı/TMDb kaynaklı
+//   gerçek bir süre asla ezilmez.
+// - episodeDuration dışında hiçbir alana dokunmaz; userId/UserContent'e hiç
+//   erişmez.
+async function syncContentRuntime(req, res) {
+  try {
+    const { id } = req.params;
+    const { tmdbId, mediaType, minutesPerEpisode } = req.body || {};
+
+    if (mediaType !== "movie") {
+      return res.status(400).json({
+        ok: false,
+        message: "Bu akış yalnızca film süresi tamamlama için kullanılabilir.",
+      });
+    }
+
+    const numericTmdbId = Number(tmdbId);
+
+    if (!Number.isInteger(numericTmdbId) || numericTmdbId <= 0) {
+      return res.status(400).json({ ok: false, message: "Geçerli bir tmdbId gerekli." });
+    }
+
+    const normalizedMinutes = normalizeIncomingRuntimeMinutes(minutesPerEpisode);
+
+    if (!normalizedMinutes) {
+      return res.status(400).json({ ok: false, message: "Geçerli bir süre (dakika) gerekli." });
+    }
+
+    const content = await Content.findById(id);
+
+    if (!content) {
+      return res.status(404).json({ ok: false, message: "İçerik bulunamadı." });
+    }
+
+    if (content.mediaType !== "movie" || content.tmdbId !== numericTmdbId) {
+      return res.status(400).json({ ok: false, message: "Eşleşme doğrulanamadı." });
+    }
+
+    if (Number(content.episodeDuration) > 0) {
+      return res.json({ ok: true, data: content });
+    }
+
+    content.episodeDuration = normalizedMinutes;
+    await content.save();
+
+    res.json({ ok: true, data: content });
+  } catch (error) {
+    handleError(res, error, "Failed to sync content runtime");
+  }
+}
+
 module.exports = {
   getContents,
   createContent,
   updateContent,
   deleteContent,
   bulkImportContents,
+  syncContentRuntime,
 };

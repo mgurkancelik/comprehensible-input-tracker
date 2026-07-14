@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getSeriesDetails, getSeasonDetails, getMovieDetails } from "../services/tmdb";
-import { getTmdbTvId, getTmdbMovieId } from "../utils/contentIdentity";
+import { getTmdbTvId, getTmdbMovieId, normalizeRuntimeMinutes } from "../utils/contentIdentity";
+import { getContentTotalMinutes, formatMinutesLabel, formatDateLabel } from "../utils/stats";
 
 const STATUS_OPTIONS = [
   { value: "İzleyecekler", label: "İzleyeceğim" },
@@ -19,6 +20,12 @@ function ContentDetailModal({
   onSyncSeasonEpisodes,
   onToggleEpisodeWatched,
   onToggleSeasonWatched,
+  onSyncMovieRuntime,
+  onEditNotes,
+  onDeleteContent,
+  onSaveDates,
+  onWatchOneEpisode,
+  onMarkAllWatched,
 }) {
   const isSeries = item?.mediaType === "tv";
   // Güvensiz `item.id.split("-").pop()` yerine: yalnızca content.tmdbId
@@ -62,11 +69,7 @@ function ContentDetailModal({
           return;
         }
 
-        setMovieRuntime(
-          typeof details.runtime === "number" && details.runtime > 0
-            ? details.runtime
-            : null
-        );
+        setMovieRuntime(normalizeRuntimeMinutes(details.runtime));
         setMovieRuntimeStatus("success");
       } catch {
         if (isCancelled) {
@@ -84,6 +87,47 @@ function ContentDetailModal({
     };
   }, [isMovie, rawMovieId]);
 
+  // Yukarıdaki fetch yalnızca bu modal'ın LOCAL state'ini doldurur — MongoDB
+  // Content kaydına hiç yazmaz. Bu içerik zaten kütüphanede kayıtlıysa
+  // (backendContentId var) ve kayıtlı süresi hâlâ eksikse (0/null), gerçek
+  // runtime bulunur bulunmaz App.jsx'teki dar kapsamlı sync akışına (bkz.
+  // syncMovieRuntime) bir kez bildirilir — kalıcı hâle gelsin diye. Aynı
+  // (backendContentId) için tekrar tekrar istek atılmaması syncedContentIdsRef
+  // ile garanti edilir; App.jsx tarafı da ayrıca "zaten süresi var mı"
+  // kontrolü yapar (çift güvence).
+  const syncedContentIdsRef = useRef(new Set());
+
+  useEffect(() => {
+    if (
+      !isMovie ||
+      movieRuntimeStatus !== "success" ||
+      !movieRuntime ||
+      !onSyncMovieRuntime
+    ) {
+      return;
+    }
+
+    const savedContentForSync = (contents || []).find(
+      (content) => content.sourceId === item?.id
+    );
+
+    const backendContentId = savedContentForSync?.backendContentId;
+    const hasPersistedRuntime = Number(savedContentForSync?.minutesPerEpisode) > 0;
+
+    if (!backendContentId || hasPersistedRuntime) {
+      return;
+    }
+
+    const syncKey = String(backendContentId);
+
+    if (syncedContentIdsRef.current.has(syncKey)) {
+      return;
+    }
+
+    syncedContentIdsRef.current.add(syncKey);
+    onSyncMovieRuntime(backendContentId, rawMovieId, movieRuntime);
+  }, [isMovie, movieRuntimeStatus, movieRuntime, rawMovieId, contents, item?.id, onSyncMovieRuntime]);
+
   const [seasons, setSeasons] = useState([]);
   const [seasonsStatus, setSeasonsStatus] = useState("idle");
   const [seasonsError, setSeasonsError] = useState("");
@@ -92,6 +136,16 @@ function ContentDetailModal({
   const [episodes, setEpisodes] = useState([]);
   const [episodesStatus, setEpisodesStatus] = useState("idle");
   const [episodesError, setEpisodesError] = useState("");
+
+  // "Detayları Düzenle" tarih formu — App.jsx'e hiç network isteği atmadan
+  // yalnızca yerel taslak tutar. Kaydet'e basılana kadar hiçbir PUT gitmez.
+  // Input'tan gelen "YYYY-MM-DD" değeri (tarayıcının <input type="date">
+  // ürettiği ham metin) hiçbir zaman bir Date nesnesine çevrilip geri
+  // okunmaz — bu yüzden timezone kaynaklı gün kayması riski yoktur.
+  const [isEditingDates, setIsEditingDates] = useState(false);
+  const [startDateDraft, setStartDateDraft] = useState("");
+  const [finishDateDraft, setFinishDateDraft] = useState("");
+  const [dateValidationError, setDateValidationError] = useState("");
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -287,6 +341,60 @@ function ContentDetailModal({
     }
   };
 
+  const openDateEditor = () => {
+    setStartDateDraft(savedContent?.startDate || "");
+    setFinishDateDraft(savedContent?.completedDate || "");
+    setDateValidationError("");
+    setIsEditingDates(true);
+  };
+
+  const closeDateEditor = () => {
+    setIsEditingDates(false);
+    setDateValidationError("");
+  };
+
+  // Her iki tarih de doluysa başlangıç bitişten sonra olamaz — "YYYY-MM-DD"
+  // formatındaki string'lerin doğrudan karşılaştırılması (Date'e çevirmeden)
+  // kronolojik olarak doğru sonucu verir, timezone riski taşımaz.
+  const handleSaveDates = async () => {
+    setDateValidationError("");
+
+    if (startDateDraft && finishDateDraft && startDateDraft > finishDateDraft) {
+      setDateValidationError("Başlangıç tarihi bitiş tarihinden sonra olamaz.");
+      return;
+    }
+
+    if (!savedContent || !onSaveDates || isUpdatingStatus) {
+      return;
+    }
+
+    const result = await onSaveDates(savedContent.id, {
+      startDate: startDateDraft,
+      finishDate: finishDateDraft,
+    });
+
+    // Yalnızca gerçek bir hata durumunda ("error") form açık kalır ve
+    // kullanıcının yazdığı değerler korunur — başarı veya "local"/"not_found"
+    // gibi yerel state'in zaten güncellendiği durumlarda form kapanır.
+    if (result?.status !== "error") {
+      closeDateEditor();
+    }
+  };
+
+  const totalEpisodesForQuickActions = Math.max(savedContent?.totalEpisodes || 0, 0);
+  const watchedEpisodesForQuickActions = Math.min(
+    Math.max(savedContent?.watchedEpisodes || 0, 0),
+    totalEpisodesForQuickActions
+  );
+  const isSeasonTracked = Boolean(
+    savedContent?.mediaType === "tv" &&
+      savedContent?.seasons &&
+      savedContent.seasons.length > 0
+  );
+  const quickEpisodeActionsDisabled =
+    totalEpisodesForQuickActions <= 0 ||
+    watchedEpisodesForQuickActions >= totalEpisodesForQuickActions;
+
   return (
     <div className="modal-overlay" onClick={handleOverlayClick}>
       <div
@@ -357,6 +465,166 @@ function ContentDetailModal({
           </p>
 
           <p className="modal-overview">{item.overview}</p>
+
+          {/* Kütüphanede zaten kayıtlı içerikler için: canonical durum/tarih/
+              toplam input bilgisi. Tarih için tek canonical alan kullanılır —
+              frontend completedDate (backend UserContent.finishDate'ten
+              gelir, bkz. App.jsx mapUserContentToFrontendContent) — yeni bir
+              tarih alanı üretilmez, sahte bir "bugün" asla gösterilmez.
+              Toplam input, karttaki/Dashboard'daki/Takip Çizelgesi'ndeki ile
+              AYNI tek kaynaktan (stats.js getContentTotalMinutes) gelir. */}
+          {isAdded && savedContent && (
+            <div className="modal-tracking-info">
+              <p className="modal-tracking-line">
+                Durum:{" "}
+                {STATUS_OPTIONS.find((option) => option.value === savedContent.status)
+                  ?.label || savedContent.status}
+              </p>
+
+              <p className="modal-tracking-line">
+                {(() => {
+                  const finishLabel = item.type === "Film" ? "İzlenme tarihi" : "Bitiş tarihi";
+                  const formattedFinishDate = formatDateLabel(savedContent.completedDate);
+
+                  return formattedFinishDate
+                    ? `${finishLabel}: ${formattedFinishDate}`
+                    : `${finishLabel} belirtilmedi.`;
+                })()}
+              </p>
+
+              <p className="modal-tracking-line">
+                Toplam input: {formatMinutesLabel(getContentTotalMinutes(savedContent))}
+              </p>
+
+              {savedContent.startDate && (
+                <p className="modal-tracking-line">
+                  Başlangıç tarihi:{" "}
+                  {formatDateLabel(savedContent.startDate) || savedContent.startDate}
+                </p>
+              )}
+
+              {savedContent.targetEndDate && (
+                <p className="modal-tracking-line">
+                  Hedef bitiş tarihi:{" "}
+                  {formatDateLabel(savedContent.targetEndDate) ||
+                    savedContent.targetEndDate}
+                </p>
+              )}
+
+              <p className="modal-tracking-line modal-tracking-notes">
+                {savedContent.notes ? `Not: ${savedContent.notes}` : "Henüz not eklenmedi."}
+              </p>
+            </div>
+          )}
+
+          {/* Detayları Düzenle: başlangıç ve bitiş/izlenme tarihi. Frontend
+              canonical alanları (startDate, completedDate) App.jsx'teki
+              mapUserContentToFrontendContent ile birebir aynı — yeni bir
+              tarih alanı üretilmez. Kaydet, mevcut UserContent PUT akışını
+              (onSaveDates → App.jsx updateContentDates → saveUserContentUpdate)
+              kullanır; ownership/JWT App.jsx tarafında zaten korunuyor. */}
+          {isAdded && savedContent && onSaveDates && (
+            <div className="modal-edit-dates">
+              <div className="modal-edit-dates-header">
+                <p className="modal-status-label">Detayları Düzenle</p>
+
+                <button
+                  type="button"
+                  className="card-notes-btn"
+                  onClick={isEditingDates ? closeDateEditor : openDateEditor}
+                >
+                  {isEditingDates ? "Vazgeç" : "Tarihleri Düzenle"}
+                </button>
+              </div>
+
+              {isEditingDates && (
+                <div className="modal-edit-dates-form">
+                  <label className="field" htmlFor="modal-start-date">
+                    <span className="field-label">Başlangıç tarihi</span>
+                    <input
+                      id="modal-start-date"
+                      type="date"
+                      value={startDateDraft}
+                      onChange={(event) => setStartDateDraft(event.target.value)}
+                    />
+                  </label>
+
+                  <label className="field" htmlFor="modal-finish-date">
+                    <span className="field-label">
+                      {item.type === "Film" ? "İzlenme tarihi" : "Bitiş tarihi"}
+                    </span>
+                    <input
+                      id="modal-finish-date"
+                      type="date"
+                      value={finishDateDraft}
+                      onChange={(event) => setFinishDateDraft(event.target.value)}
+                    />
+                  </label>
+
+                  {dateValidationError && (
+                    <p className="modal-date-error" role="alert">
+                      {dateValidationError}
+                    </p>
+                  )}
+
+                  <div className="modal-secondary-actions">
+                    <button type="button" className="card-notes-btn" onClick={closeDateEditor}>
+                      Vazgeç
+                    </button>
+
+                    <button
+                      type="button"
+                      className="modal-status-btn modal-status-btn--active"
+                      onClick={handleSaveDates}
+                      disabled={isUpdatingStatus}
+                    >
+                      {isUpdatingStatus ? "Kaydediliyor..." : "Kaydet"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Basit bölüm sayacı: TMDb sezon yönetimi (aşağıdaki Sezonlar
+              bloğu) kullanılamayan veya henüz hiç açılmamış bölümlü içerikler
+              (dizi/anime/podcast/YouTube) için "+1 bölüm izledim" / "Tümünü
+              izledim" — eskiden geniş kart görünümünde (renderContentCard)
+              bulunan, App.jsx'teki watchOneEpisode/markAllWatched mantığına
+              hiç dokunulmadan buraya taşınan aynı aksiyon. */}
+          {isAdded && savedContent && savedContent.type !== "Film" && (
+            <div className="modal-episode-quick-actions">
+              {!isSeries && (
+                <p className="modal-tracking-line">
+                  {watchedEpisodesForQuickActions} / {totalEpisodesForQuickActions} bölüm
+                </p>
+              )}
+
+              <div className="modal-secondary-actions">
+                {onWatchOneEpisode && (
+                  <button
+                    type="button"
+                    className="card-notes-btn"
+                    onClick={() => onWatchOneEpisode(savedContent.id)}
+                    disabled={quickEpisodeActionsDisabled}
+                  >
+                    +1 bölüm izledim
+                  </button>
+                )}
+
+                {onMarkAllWatched && !isSeasonTracked && (
+                  <button
+                    type="button"
+                    className="card-notes-btn"
+                    onClick={() => onMarkAllWatched(savedContent.id)}
+                    disabled={quickEpisodeActionsDisabled}
+                  >
+                    Tümünü izledim
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {isSeries && (
             <div className="modal-seasons">
@@ -562,6 +830,30 @@ function ContentDetailModal({
               })}
             </div>
           </div>
+
+          {isAdded && savedContent && (onEditNotes || onDeleteContent) && (
+            <div className="modal-secondary-actions">
+              {onEditNotes && (
+                <button
+                  type="button"
+                  className="card-notes-btn"
+                  onClick={onEditNotes}
+                >
+                  {savedContent.notes ? "Notu Düzenle" : "Not Ekle"}
+                </button>
+              )}
+
+              {onDeleteContent && (
+                <button
+                  type="button"
+                  className="delete-btn"
+                  onClick={onDeleteContent}
+                >
+                  Sil
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

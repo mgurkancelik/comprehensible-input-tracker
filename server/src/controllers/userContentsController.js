@@ -78,6 +78,45 @@ function normalizeTotalEpisodes(rawValue) {
   return numberValue;
 }
 
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+// startDate/finishDate: boş string (temizleme) her zaman geçerlidir — bu,
+// mevcut UserContent şemasının varsayılan değeriyle ("") birebir uyumludur.
+// Dolu bir değer yalnızca "YYYY-MM-DD" formatına uyuyorsa VE gerçekten
+// geçerli bir takvim günüyse kabul edilir; aksi halde undefined döner ve
+// controller bunu 400 ile reddeder. Bilinmeyen alanlar zaten
+// pickAllowedFields tarafından süzülüyor — bu yalnızca format doğrulaması.
+function normalizeDateOnly(rawValue) {
+  if (rawValue === "" || rawValue === null) {
+    return "";
+  }
+
+  if (typeof rawValue !== "string" || !DATE_ONLY_PATTERN.test(rawValue)) {
+    return undefined;
+  }
+
+  return Number.isNaN(new Date(rawValue).getTime()) ? undefined : rawValue;
+}
+
+// payload içindeki startDate/finishDate (varsa) yerinde normalize eder.
+// Geçersiz bir alan bulunursa o alanın adını döner (controller 400 ile
+// reddeder); her şey geçerliyse null döner.
+function normalizeDateFields(payload) {
+  for (const field of ["startDate", "finishDate"]) {
+    if (Object.prototype.hasOwnProperty.call(payload, field)) {
+      const normalized = normalizeDateOnly(payload[field]);
+
+      if (normalized === undefined) {
+        return field;
+      }
+
+      payload[field] = normalized;
+    }
+  }
+
+  return null;
+}
+
 async function getUserContents(req, res) {
   try {
     const userContents = await UserContent.find({ userId: req.userId })
@@ -135,6 +174,14 @@ async function createUserContent(req, res) {
       payload.totalEpisodes = normalized;
     }
 
+    const invalidDateField = normalizeDateFields(payload);
+    if (invalidDateField) {
+      return res.status(400).json({
+        ok: false,
+        message: `${invalidDateField} geçerli bir "YYYY-MM-DD" tarihi veya boş olmalı.`,
+      });
+    }
+
     const created = await UserContent.create({ ...payload, userId, contentId });
     res.status(201).json({ ok: true, data: created });
   } catch (error) {
@@ -158,6 +205,14 @@ async function updateUserContent(req, res) {
       }
 
       payload.totalEpisodes = normalized;
+    }
+
+    const invalidDateField = normalizeDateFields(payload);
+    if (invalidDateField) {
+      return res.status(400).json({
+        ok: false,
+        message: `${invalidDateField} geçerli bir "YYYY-MM-DD" tarihi veya boş olmalı.`,
+      });
     }
 
     const updated = await UserContent.findOneAndUpdate(

@@ -305,6 +305,28 @@ export function getWatchedMovies(contents) {
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 }
 
+// "YYYY-MM-DD" gibi bir tarihi "14 Temmuz 2026" biçiminde okunabilir hale
+// getirir — Takip Çizelgesi'nde (İzlenen Filmler listesi) zaten kullanılan
+// aynı tr-TR biçimidir, tek kaynaktan tutarlılık için burada da kullanılır.
+// Geçersiz/boş bir tarihte boş string döner — sahte bir tarih ASLA üretilmez.
+export function formatDateLabel(dateString) {
+  if (!dateString) {
+    return "";
+  }
+
+  const parsedDate = new Date(dateString);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "";
+  }
+
+  return parsedDate.toLocaleDateString("tr-TR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 // 60 dakikanın altını "dk", üstünü "saat" olarak okunabilir gösterir.
 export function formatMinutesLabel(minutes) {
   const safeMinutes = Number.isFinite(minutes) ? Math.max(minutes, 0) : 0;

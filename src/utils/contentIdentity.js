@@ -94,6 +94,21 @@ export function getTmdbMovieId(content) {
   return parsed && parsed.mediaType === "movie" ? parsed.tmdbId : null;
 }
 
+// Film/dizi süresi (dakika) için tek ortak normalizasyon kuralı: Number,
+// sonlu ve pozitif olmalı; TMDb ondalık bir değer dönerse tam sayıya
+// yuvarlanır. Geçersizse (NaN, negatif, string, 0, null/undefined) her
+// zaman null döner — hiçbir çağıran taraf bunun yerine sabit/tahmini bir
+// süre üretmemeli.
+export function normalizeRuntimeMinutes(value) {
+  const numberValue = Number(value);
+
+  if (!Number.isFinite(numberValue) || numberValue <= 0) {
+    return null;
+  }
+
+  return Math.round(numberValue);
+}
+
 // "Bölümleri Yönet" gerçekten çalışabilir mi? — yalnızca güvenilir bir TMDb
 // TV id'si çözümlenebiliyorsa true döner. mediaType === "tv" olması tek
 // başına yeterli değildir (manuel eklenmiş, TMDb ile eşleştirilmemiş bir

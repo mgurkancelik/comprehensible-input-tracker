@@ -6,6 +6,7 @@ const {
   updateContent,
   deleteContent,
   bulkImportContents,
+  syncContentRuntime,
 } = require("../controllers/contentsController");
 
 const router = express.Router();
@@ -21,5 +22,10 @@ router.post("/", requireAuth, createContent);
 router.post("/bulk-import", requireAuth, bulkImportContents);
 router.put("/:id", requireAuth, updateContent);
 router.delete("/:id", requireAuth, deleteContent);
+
+// Global PUT'un YERİNE geçmez (o kapalı kalır) — yalnızca eksik film
+// süresini doğrulanmış tmdbId eşleşmesiyle tamamlayan dar kapsamlı akış
+// (bkz. contentsController.js syncContentRuntime).
+router.patch("/:id/sync-runtime", requireAuth, syncContentRuntime);
 
 module.exports = router;

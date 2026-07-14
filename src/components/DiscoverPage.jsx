@@ -84,6 +84,7 @@ function DiscoverPage({
   onSyncSeasonEpisodes,
   onToggleEpisodeWatched,
   onToggleSeasonWatched,
+  onSyncMovieRuntime,
 }) {
   const [activeCategory, setActiveCategory] = useState(CATEGORIES[0].key);
   const [items, setItems] = useState([]);
@@ -411,6 +412,7 @@ function DiscoverPage({
           onSyncSeasonEpisodes={onSyncSeasonEpisodes}
           onToggleEpisodeWatched={onToggleEpisodeWatched}
           onToggleSeasonWatched={onToggleSeasonWatched}
+          onSyncMovieRuntime={onSyncMovieRuntime}
         />
       )}
     </section>

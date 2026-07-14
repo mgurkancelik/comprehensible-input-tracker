@@ -1758,6 +1758,180 @@ button:disabled {
   overflow: hidden;
 }
 
+/* Kütüphanenin üç durumu için ortak poster grid'i (bkz. LibraryPosterGrid.jsx).
+   Discover sayfasının .poster-grid/.poster-card'ından KASITLI olarak ayrı tutulur —
+   bu sınıfları değiştirmek Keşfet'in görünümünü de etkiler. */
+.watched-section-title {
+  margin: var(--space-6) 0 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-heading);
+}
+
+.watched-poster-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.watched-poster-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.watched-poster-card:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+.watched-poster-image {
+  position: relative;
+  display: block;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--md-sys-color-outline-variant, var(--color-border));
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.watched-poster-card:hover .watched-poster-image,
+.watched-poster-card:focus-visible .watched-poster-image {
+  transform: translateY(-2px);
+  box-shadow: var(--md-sys-elevation-level2, var(--shadow-md));
+}
+
+.watched-poster-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.watched-poster-badge {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--color-success);
+  color: white;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: var(--shadow-sm);
+}
+
+/* İzlediklerim (✓) varsayılan olarak --color-success kullanır (yukarıdaki
+   temel .watched-poster-badge kuralı) — bu iki modifier yalnızca
+   İzleyecekler/İzliyorum için farklı bir renk/glif ekler. */
+.watched-poster-badge--planned {
+  background: var(--color-primary);
+}
+
+.watched-poster-badge--watching {
+  background: var(--color-progress);
+}
+
+.watched-poster-progress {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.watched-poster-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: var(--space-3);
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.85),
+    rgba(0, 0, 0, 0.35) 55%,
+    rgba(0, 0, 0, 0) 85%
+  );
+  color: #fff;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.watched-poster-card:hover .watched-poster-overlay,
+.watched-poster-card:focus-visible .watched-poster-overlay {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.watched-poster-overlay-title {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.watched-poster-overlay-meta {
+  font-size: var(--font-size-xs);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.watched-poster-overlay-cta {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.watched-poster-title {
+  font-size: var(--font-size-sm);
+  color: var(--color-heading);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.watched-poster-type {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .watched-poster-image,
+  .watched-poster-overlay {
+    transition: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .watched-poster-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3);
+  }
+}
+
 .discover-search {
   margin-bottom: var(--space-5);
 }
@@ -2180,6 +2354,99 @@ button:disabled {
   line-height: 1.5;
 }
 
+.modal-tracking-info {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.modal-tracking-line {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.modal-tracking-notes {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.modal-secondary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.modal-edit-dates {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.modal-edit-dates-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* .field/.field-label: ContentForm.jsx'in tarih input'larıyla aynı sınıflar
+   (etiket + input dikey yerleşimi) yeniden kullanılır — yalnızca grid sütun
+   sayısı burada modal'a özel 2 (ContentForm'un 3 sütunlu field-grid--dates'i
+   değil, çünkü bu formda yalnızca başlangıç + bitiş/izlenme tarihi var). */
+.modal-edit-dates-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  align-items: start;
+}
+
+/* Global color-scheme (bkz. index.css) native tarih seçici ikonunu zaten
+   temaya göre otomatik uyarlıyor — burada yalnızca kutunun kendisi
+   (arka plan/kenarlık/metin rengi) diğer form alanlarıyla (örn.
+   .notes-textarea) tutarlı hale getirilir. */
+.modal-edit-dates-form input[type="date"] {
+  height: 44px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--font-size-md);
+  width: 100%;
+}
+
+.modal-date-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+}
+
+.modal-edit-dates-form .modal-secondary-actions {
+  grid-column: 1 / -1;
+}
+
+.modal-episode-quick-actions {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .notes-textarea {
   width: 100%;
   min-height: 140px;
@@ -2411,6 +2678,10 @@ button:disabled {
   .poster-grid {
     grid-template-columns: repeat(3, 1fr);
   }
+
+  .watched-poster-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 @media (max-width: 700px) {
@@ -2452,7 +2723,16 @@ button:disabled {
     gap: var(--space-3);
   }
 
+  .watched-poster-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-3);
+  }
+
   .modal-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-edit-dates-form {
     grid-template-columns: 1fr;
   }
 
